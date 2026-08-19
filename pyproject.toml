@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "canaryguard"
+version = "1.0.0"
+description = "CanaryGuard - OpenCanary honeypot ops: alerts, dashboard, SIEM, ML triage, honeytokens"
+requires-python = ">=3.9"
+dependencies = [
+    "flask>=3.0",
+    "requests>=2.31",
+]
+
+[project.entry-points."canary.usermodule"]
+fakeapi = "canaryguard.usermodule:CanaryServiceFactory"
+smtp = "canaryguard.protocols:CanarySMTP"
+pop3 = "canaryguard.protocols:CanaryPOP3"
+imap = "canaryguard.protocols:CanaryIMAP"
+postgresql = "canaryguard.protocols:CanaryPostgreSQL"
+elasticsearch = "canaryguard.protocols:CanaryElasticsearch"
+docker = "canaryguard.protocols:CanaryDocker"
+kubernetes = "canaryguard.protocols:CanaryKubernetes"
+rtsp = "canaryguard.protocols:CanaryRTSP"
+modbus = "canaryguard.protocols:CanaryModbus"
+memcached = "canaryguard.protocols:CanaryMemcached"
+dns = "canaryguard.protocols:FakeDNS"
+mqtt = "canaryguard.protocols:CanaryMQTT"
+teamviewer = "canaryguard.protocols:CanaryTeamViewer"
+ldap = "canaryguard.protocols:CanaryLDAP"
+rmi = "canaryguard.protocols:CanaryRMI"
+
+[tool.setuptools]
+packages = ["canaryguard"]

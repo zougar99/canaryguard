@@ -1,0 +1,33 @@
+# ---- SECRETS: never upload these ----
+config.json
+*.db
+*.db-journal
+session_state.json
+*.log
+guard.out.log
+guard.err.log
+opencanary.out.log
+opencanary.err.log
+
+# ---- local run artifacts ----
+__pycache__/
+*.pyc
+canaryguard.egg-info/
+build/
+dist/
+*.egg-info/
+*_state.json
+honeytokens_state.json
+ingest_state.json
+
+# ---- decoy files & honeytokens (would reveal tokens) ----
+CanaryDecoys/
+
+# ---- OS junk ----
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ---- IDE ----
+.vscode/
+.idea/

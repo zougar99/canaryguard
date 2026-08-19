@@ -1,0 +1,72 @@
+{
+    "opencanary": {
+        "log_file": "/opt/opencanary/opencanary.log",
+        "db_file": "/opt/canaryguard/canaryguard.db"
+    },
+    "alerts": {
+        "enabled": true,
+        "min_severity": "medium",
+        "cooldown_seconds": 60,
+        "geoip": true,
+        "telegram": {
+            "enabled": true,
+            "bot_token": "REPLACE_WITH_YOUR_BOT_TOKEN",
+            "chat_id": "REPLACE_WITH_YOUR_CHAT_ID"
+        },
+        "discord": { "enabled": false, "webhook_url": "" },
+        "slack": { "enabled": false, "webhook_url": "" },
+        "email": {
+            "enabled": false, "smtp_host": "", "smtp_port": 587,
+            "username": "", "password": "", "from_addr": "", "to_addr": ""
+        }
+    },
+    "siem": {
+        "elasticsearch": { "enabled": false, "url": "http://localhost:9200", "index": "opencanary-events" },
+        "splunk": { "enabled": false, "hec_url": "", "token": "" },
+        "http": { "enabled": false, "url": "", "headers": {} },
+        "syslog": { "enabled": false, "host": "127.0.0.1", "port": 514 }
+    },
+    "honeytokens": {
+        "url_tokens": [
+            { "id": "tok_backup", "path": "/secret/backup.tar.gz", "label": "Fake backup archive", "severity": "critical" }
+        ],
+        "credential_tokens": [
+            { "id": "tok_admin", "username": "admin", "password": "admin1", "label": "Fake admin creds", "severity": "critical" }
+        ]
+    },
+    "dashboard": {
+        "host": "0.0.0.0",
+        "port": 8080,
+        "auto_start": true
+    },
+    "ingest": {
+        "poll_seconds": 2,
+        "start_from_end": true
+    },
+    "decoys": {
+        "monitor_enabled": true,
+        "folder": "/opt/canaryguard/CanaryDecoys",
+        "beacon_host": "YOUR_SERVER_IP_OR_DOMAIN",
+        "cooldown_seconds": 60
+    },
+    "protect": {
+        "folder_monitor": true,
+        "folders": [
+            "/home/user/Desktop",
+            "/home/user/Documents",
+            "/home/user/Downloads"
+        ],
+        "keylogger": true,
+        "key_buffer_max": 200,
+        "key_flush_secs": 5,
+        "sensitive_keywords": ["password", "passwd", "login", "token", "secret", "admin"]
+    },
+    "secrets": {
+        "enabled": true,
+        "max_file_kb": 512,
+        "watch_strings": [],
+        "extra_patterns": [],
+        "embed_enabled": true,
+        "embed_folder": "/opt/canaryguard/CanaryDecoys/embedded"
+    }
+}

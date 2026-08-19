@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CanaryGuard — OpenCanary Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  :root { --bg:#0f1115; --card:#171a21; --line:#242a36; --txt:#e6e9ef; --mut:#8b93a3; --acc:#4f8cff; --ok:#2ecc71; --warn:#e67e22; --bad:#e74c3c; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--txt); }
+  header { padding:16px 28px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; }
+  header span.mut { color:var(--mut); font-size:13px; }
+  .dot { width:9px; height:9px; border-radius:50%; background:var(--ok); display:inline-block; }
+  nav { display:flex; gap:4px; flex-wrap:wrap; margin-left:auto; }
+  nav button { background:transparent; color:var(--mut); border:1px solid transparent; padding:7px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
+  nav button:hover { color:var(--txt); }
+  nav button.active { background:#1c2637; color:var(--acc); border-color:#2c3e5e; }
+  main { padding:24px 28px; display:grid; gap:18px; }
+  .tab { display:none; }
+  .tab.active { display:grid; gap:18px; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .card .num { font-size:30px; font-weight:600; }
+  .card .lbl { color:var(--mut); font-size:12px; margin-top:4px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
+  @media (max-width:1000px){ .grid2{ grid-template-columns:1fr; } }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
+  th { color:var(--mut); font-weight:500; }
+  tr:hover td { background:#1c212b; }
+  .badge { padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }
+  .b-critical{ background:#7f1d1d; color:#fca5a5; } .b-high{ background:#78350f; color:#fdba74; }
+  .b-medium{ background:#1e3a5f; color:#93c5fd; } .b-low{ background:#14532d; color:#86efac; }
+  .b-info{ background:#242a36; color:#8b93a3; }
+  .b-file{ background:#1e3a5f; color:#93c5fd; } .b-fail{ background:#7f1d1d; color:#fca5a5; }
+  .b-secret{ background:#7c2d12; color:#fdba74; }
+  .timeline { display:flex; align-items:flex-end; gap:2px; height:120px; padding-top:8px; }
+  .tl-bar { background:var(--acc); border-radius:2px 2px 0 0; min-width:6px; flex:1; }
+  .mut { color:var(--mut); }
+  .map { height:320px; border-radius:10px; }
+  .mono { font-family:Consolas,monospace; font-size:12px; }
+  .pill { display:inline-block; background:#1f2633; border:1px solid var(--line); padding:2px 8px; border-radius:6px; margin:2px; font-size:12px; }
+  #top-ips td.ip { cursor:pointer; color:var(--acc); }
+  .section-title { font-size:14px; font-weight:600; margin:0 0 10px; }
+  .dl-row { border:1px solid var(--line); border-radius:8px; background:var(--card); padding:10px 12px; margin-bottom:8px; cursor:pointer; }
+  .dl-row:hover { background:#1c212b; }
+  .dl-row .head { display:flex; justify-content:space-between; }
+  .btn { background:#1c2637; border:1px solid #2c3e5e; color:var(--acc); padding:7px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
+  .btn:hover { background:#22304a; }
+  .btn.danger { color:var(--bad); border-color:#4a2c2c; }
+  .btn.ok { color:var(--ok); border-color:#2c4a3e; }
+  .bar-wrap { flex:1; height:14px; background:#1f2633; border-radius:6px; overflow:hidden; }
+  .bar-fill { height:100%; background:var(--acc); }
+  .filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .filters input, .filters select { background:#1c212b; border:1px solid var(--line); color:var(--txt); border-radius:6px; padding:6px 10px; font-size:13px; }
+  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:13px; }
+  .kv b { color:var(--mut); font-weight:500; }
+</style>
+</head>
+<body>
+<header>
+  <span class="dot"></span>
+  <h1>CanaryGuard</h1>
+  <span>OpenCanary honeypot — live attack dashboard</span>
+  <span class="mut" id="updated"></span>
+  <nav>
+    <button data-tab="overview" class="active">Overview</button>
+    <button data-tab="events">Events</button>
+    <button data-tab="creds">Credentials</button>
+    <button data-tab="sessions">Sessions</button>
+    <button data-tab="keys">Keystrokes</button>
+    <button data-tab="files">Files</button>
+    <button data-tab="secrets">Secrets</button>
+    <button data-tab="cleanup">Cleanup</button>
+  </nav>
+</header>
+<main>
+
+  <section class="tab active" id="tab-overview">
+    <div class="cards">
+      <div class="card"><div class="num" id="c-total">0</div><div class="lbl">Total events</div></div>
+      <div class="card"><div class="num" id="c-creds">0</div><div class="lbl">Credentials captured</div></div>
+      <div class="card"><div class="num" id="c-top-ip">-</div><div class="lbl">Top source IP</div></div>
+      <div class="card"><div class="num" id="c-critical">0</div><div class="lbl">Critical events (24h)</div></div>
+      <div class="card"><div class="num" id="c-sessions">0</div><div class="lbl">Logins monitored</div></div>
+      <div class="card"><div class="num" id="c-keys">0</div><div class="lbl">Keystroke dumps</div></div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <p class="section-title">Activity timeline (24h)</p>
+        <div class="timeline" id="timeline"></div>
+      </div>
+      <div class="card">
+        <p class="section-title">Attack categories (24h)</p>
+        <div id="categories"></div>
+      </div>
+    </div>
+    <div class="grid2">
+      <div class="card">
+        <p class="section-title">Top attacker IPs <span class="mut" id="top-ip-count"></span></p>
+        <table><thead><tr><th>IP</th><th>Country</th><th>City</th><th>Events</th></tr></thead>
+        <tbody id="top-ips"></tbody></table>
+      </div>
+      <div class="card">
+        <p class="section-title">Attack source map (24h)</p>
+        <div id="map" class="map"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-events">
+    <div class="card">
+      <p class="section-title">Recent events</p>
+      <table><thead><tr><th>#</th><th>Time</th><th>Category</th><th>Sev</th><th>Source</th><th>Port</th></tr></thead>
+      <tbody id="events"></tbody></table>
+    </div>
+    <div class="card">
+      <p class="section-title">IP drill-down</p>
+      <div id="drill"></div>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-creds">
+    <div class="card">
+      <p class="section-title">Captured credentials</p>
+      <table><thead><tr><th>Time</th><th>Source</th><th>User / Password</th><th>Service</th></tr></thead>
+      <tbody id="creds"></tbody></table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-sessions">
+    <div class="card">
+      <p class="section-title">Windows logon sessions (4624/4625) <span class="mut" id="sess-count"></span></p>
+      <table><thead><tr><th>Time</th><th>Type</th><th>User</th><th>Source IP</th><th>Logon type</th></tr></thead>
+      <tbody id="sessions"></tbody></table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-keys">
+    <div class="card">
+      <p class="section-title">Keystroke captures <span class="mut" id="keys-count"></span></p>
+      <table><thead><tr><th>Time</th><th>Window</th><th>Keystrokes</th></tr></thead>
+      <tbody id="keys"></tbody></table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-files">
+    <div class="card">
+      <p class="section-title">Folder watchdog events <span class="mut" id="files-count"></span></p>
+      <table><thead><tr><th>Time</th><th>Action</th><th>Path</th></tr></thead>
+      <tbody id="files"></tbody></table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-secrets">
+    <div class="card">
+      <p class="section-title">Secret scanner — tokens/keys found in files <span class="mut" id="secrets-count"></span></p>
+      <table><thead><tr><th>Time</th><th>Kind</th><th>Value</th><th>File</th></tr></thead>
+      <tbody id="secrets"></tbody></table>
+    </div>
+    <div class="card">
+      <p class="section-title">Embedded honeytokens — hidden tokens in normal files</p>
+      <table><thead><tr><th>Kind</th><th>Token</th><th>Status</th><th>File</th></tr></thead>
+      <tbody id="embeds"></tbody></table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-cleanup">
+    <div class="card">
+      <p class="section-title">Cleanup — find files left behind</p>
+      <div class="filters">
+        <input type="number" id="cl-min" value="120" min="5" style="width:90px">
+        <span class="mut">minutes</span>
+        <button class="btn ok" onclick="runCleanupScan()">Scan</button>
+        <button class="btn danger" onclick="deleteSelected()">Delete selected</button>
+      </div>
+      <table style="margin-top:12px"><thead><tr>
+        <th style="width:30px"><input type="checkbox" id="cl-all"></th>
+        <th>Path</th><th>Size</th><th>Modified</th></tr></thead>
+      <tbody id="cleanup-rows"></tbody></table>
+      <div id="cleanup-msg" class="mut" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+const map = L.map('map').setView([30, 0], 2);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18}).addTo(map);
+
+function esc(s){ return (s||'').toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function sevBadge(s){
+  const cls = (s||'info').toLowerCase();
+  return `<span class="badge b-${['critical','high','medium','low'].includes(cls)?cls:'info'}">${esc(cls)}</span>`;
+}
+
+document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+  b.classList.add('active');
+  document.getElementById('tab-' + b.dataset.tab).classList.add('active');
+});
+
+function renderTimeline(series){
+  const el = document.getElementById('timeline');
+  if(!series.length){ el.innerHTML='<span class="mut">No data</span>'; return; }
+  const max = Math.max(...series.map(x=>x[1]), 1);
+  el.innerHTML = series.map(([h,n]) =>
+    `<div class="tl-bar" style="height:${Math.max(4, Math.round(n/max*100))}%" title="${esc(h)}: ${n}"></div>`).join('');
+}
+
+function renderCategories(cats){
+  const el = document.getElementById('categories');
+  if(!cats.length){ el.innerHTML='<span class="mut">No data</span>'; return; }
+  const total = cats.reduce((a,[,n])=>a+n,0);
+  el.innerHTML = cats.map(([c,n]) => {
+    const pct = total? Math.round(n/total*100):0;
+    return `<div style="display:flex;align-items:center;gap:10px;margin:6px 0">
+      <span style="width:150px" class="mut">${esc(c)}</span>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%"></div></div>
+      <span style="width:45px;text-align:right">${n}</span></div>`;
+  }).join('');
+}
+
+function renderTopIps(ips){
+  document.getElementById('top-ip-count').textContent = `(${ips.length} sources)`;
+  document.getElementById('top-ips').innerHTML = ips.map(r => `
+    <tr><td class="ip" data-ip="${esc(r.src_ip)}">${esc(r.src_ip)}</td>
+    <td>${esc(r.country||'-')}</td><td>${esc(r.city||'-')}</td><td>${r.n}</td></tr>`).join('');
+  document.querySelectorAll('#top-ips .ip').forEach(td => td.onclick = () => drill(td.dataset.ip));
+}
+
+function renderCreds(creds){
+  document.getElementById('creds').innerHTML = creds.length ? creds.map(c => `
+    <tr><td class="mut">${esc(c.ts)}</td><td>${esc(c.src_ip)}</td>
+    <td class="mono">${esc(c.username)} / ${esc(c.password)}</td><td>${esc(c.service)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="mut">No credentials captured yet</td></tr>';
+}
+
+function renderEvents(events){
+  document.getElementById('events').innerHTML = events.length ? events.map(e => `
+    <tr><td class="mut">${e.id}</td><td class="mut">${esc(e.ts)}</td>
+    <td>${esc(e.category)}</td><td>${sevBadge(e.severity)}</td>
+    <td class="ip" data-ip="${esc(e.src_ip)}" style="cursor:pointer;color:var(--acc)">${esc(e.src_ip||'-')}</td>
+    <td>${esc(e.dst_port||'-')}</td></tr>`).join('')
+    : '<tr><td colspan="6" class="mut">No events yet</td></tr>';
+  document.querySelectorAll('#events .ip').forEach(td => td.onclick = () => drill(td.dataset.ip));
+}
+
+function renderMap(geo){
+  const marks = geo.filter(g => g.country || g.city);
+  marks.forEach(g => {
+    const key = g.country || g.city;
+    if(!key) return;
+    fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(key)}`)
+      .then(r => r.json()).then(res => {
+        if(res.length){
+          const [lat, lon] = [parseFloat(res[0].lat), parseFloat(res[0].lon)];
+          L.marker([lat, lon]).addTo(map).bindPopup(
+            `<b>${esc(g.src_ip)}</b><br>${esc(g.city||'')} ${esc(g.country||'')}<br>${g.n} events`);
+        }
+      }).catch(()=>{});
+  });
+}
+
+function renderSessions(d){
+  document.getElementById('sess-count').textContent = `(total ${d.total}, ${d.failed.length} failed)`;
+  document.getElementById('sessions').innerHTML = d.sessions.length ? d.sessions.map(s => `
+    <tr><td class="mut">${esc(s.ts)}</td>
+    <td>${s.status === 'success' ? '<span class="badge b-low">success</span>' : '<span class="badge b-fail">FAILED</span>'}</td>
+    <td class="mono">${esc(s.username)}</td>
+    <td class="mono">${esc(s.source_ip||'-')}</td>
+    <td>${esc(s.logon_type||'-')}</td></tr>`).join('')
+    : '<tr><td colspan="5" class="mut">No sessions yet (needs admin to read Security log)</td></tr>';
+}
+
+function renderKeys(d){
+  document.getElementById('keys-count').textContent = `(total ${d.total})`;
+  document.getElementById('keys').innerHTML = d.entries.length ? d.entries.map(k => `
+    <tr><td class="mut">${esc(k.ts)}</td><td>${esc(k.window)}</td>
+    <td class="mono">${esc(k.keys)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="mut">No keystrokes yet</td></tr>';
+}
+
+function renderFiles(d){
+  document.getElementById('files-count').textContent = `(total ${d.total})`;
+  document.getElementById('files').innerHTML = d.entries.length ? d.entries.map(f => `
+    <tr><td class="mut">${esc(f.ts)}</td>
+    <td><span class="badge b-file">${esc(f.action)}</span></td>
+    <td class="mono">${esc(f.path)}</td></tr>`).join('')
+    : '<tr><td colspan="3" class="mut">No file events yet</td></tr>';
+}
+
+function renderSecrets(d){
+  document.getElementById('secrets-count').textContent = `(total ${d.total})`;
+  document.getElementById('secrets').innerHTML = d.entries.length ? d.entries.map(s => `
+    <tr><td class="mut">${esc(s.ts)}</td>
+    <td><span class="badge b-secret">${esc(s.kind)}</span></td>
+    <td class="mono">${esc(s.value)}</td>
+    <td class="mono mut">${esc(s.path)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="mut">No secrets found yet</td></tr>';
+}
+
+async function renderEmbeds(){
+  try{
+    const r = await fetch('/api/embed/verify');
+    const d = await r.json();
+    document.getElementById('embeds').innerHTML = d.results.length ? d.results.map(s => `
+      <tr><td>${esc(s[0])}</td><td class="mono">${esc(s[1])}</td>
+      <td><span class="badge ${s[2]==='intact'?'b-low':'b-fail'}">${esc(s[2])}</span></td>
+      <td class="mono mut">${esc(s[3])}</td></tr>`).join('')
+      : '<tr><td colspan="4" class="mut">No embedded tokens</td></tr>';
+  }catch(e){}
+}
+
+async function drill(ip){
+  const r = await fetch('/api/ip/' + encodeURIComponent(ip));
+  const d = await r.json();
+  const el = document.getElementById('drill');
+  el.innerHTML = `<div class="card">
+    <p class="section-title">IP: ${esc(ip)} <span class="mut">${esc((d.meta||{}).country||'')} ${esc((d.meta||{}).city||'')}</span></p>
+    ${d.events.map(e => `<div class="dl-row">
+      <div class="head"><span>${sevBadge(e.severity)} <b>${esc(e.category)}</b></span>
+      <span class="mut">${esc(e.ts)} dst:${esc(e.dst_port||'-')}</span></div>
+      <div class="mono mut">${esc(JSON.stringify(JSON.parse(e.raw_json||'{}').logdata||{}))}</div></div>`).join('') || '<span class="mut">No events</span>'}
+  </div>`;
+  document.getElementById('tab-events').scrollIntoView({behavior:'smooth'});
+}
+
+async function runCleanupScan(){
+  const minutes = document.getElementById('cl-min').value || 120;
+  const r = await fetch('/api/cleanup/scan?minutes=' + encodeURIComponent(minutes));
+  const d = await r.json();
+  document.getElementById('cleanup-rows').innerHTML = d.items.length ? d.items.map(it => `
+    <tr><td><input type="checkbox" class="cl-chk" value="${esc(it.path)}"></td>
+    <td class="mono">${esc(it.path)}</td><td>${it.size}</td><td class="mut">${esc(it.mtime)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="mut">Nothing found in that window</td></tr>';
+  document.getElementById('cleanup-msg').textContent = `${d.items.length} suspicious file(s) found`;
+}
+
+async function deleteSelected(){
+  const paths = [...document.querySelectorAll('.cl-chk:checked')].map(x => x.value);
+  if(!paths.length){ alert('Select files first'); return; }
+  if(!confirm('Delete ' + paths.length + ' file(s)?')) return;
+  const r = await fetch('/api/cleanup/delete', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({paths})
+  });
+  const d = await r.json();
+  document.getElementById('cleanup-msg').textContent =
+    `Removed: ${d.removed.length}  Failed: ${d.failed.length}`;
+  runCleanupScan();
+}
+
+async function refresh(){
+  const r = await fetch('/api/stats'); const s = await r.json();
+  document.getElementById('c-total').textContent = s.total;
+  document.getElementById('c-creds').textContent = s.creds;
+  document.getElementById('c-top-ip').textContent = s.top_ips.length ? s.top_ips[0].src_ip : '-';
+  const crit = (s.severities.find(x=>x[0]==='critical')||[0,0])[1];
+  document.getElementById('c-critical').textContent = crit;
+  document.getElementById('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
+  renderTimeline(s.timeline);
+  renderCategories(s.categories);
+  renderTopIps(s.top_ips);
+  if(!window._mapDrawn){ window._mapDrawn = true; renderMap(s.geo); }
+
+  const [ev, cr, ss, ks, fs, sc] = await Promise.all([
+    (await fetch('/api/events')).json(),
+    (await fetch('/api/creds')).json(),
+    (await fetch('/api/sessions')).json(),
+    (await fetch('/api/keys')).json(),
+    (await fetch('/api/files')).json(),
+    (await fetch('/api/secrets')).json(),
+  ]);
+  renderEvents(ev);
+  renderCreds(cr);
+  renderSessions(ss);
+  renderKeys(ks);
+  renderFiles(fs);
+  renderSecrets(sc);
+  renderEmbeds();
+  document.getElementById('c-sessions').textContent = ss.total;
+  document.getElementById('c-keys').textContent = ks.total;
+}
+
+refresh();
+setInterval(refresh, 5000);
+</script>
+</body>
+</html>

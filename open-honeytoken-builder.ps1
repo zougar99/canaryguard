@@ -1,0 +1,1 @@
+Start-Process -FilePath 'C:\Program Files\Python314\pythonw.exe' -ArgumentList 'C:\Users\werlist99\canaryguard\honeytoken_builder.py' -WorkingDirectory 'C:\Users\werlist99\canaryguard'
