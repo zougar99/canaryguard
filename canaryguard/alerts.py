@@ -58,7 +58,8 @@ class AlertManager:
         if SEVERITY_ORDER.get(severity, 0) < SEVERITY_ORDER.get(self.min_sev, 2):
             return
 
-        src = event.get("src_host") or event.get("src_ip") or "?"
+        src = event.get("src_host") or event.get("src_ip") or ""
+        src = src if src not in ("", "-", "127.0.0.1", "::1", "local") else "LOCAL PC"
         dst_port = event.get("dst_port", "-")
         sev_emoji = SEVERITY_EMOJI.get(severity, "\U0001f534")
         cat_emoji = CATEGORY_EMOJI.get(category, "\U0001f4a1")

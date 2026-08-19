@@ -8,6 +8,7 @@
         "min_severity": "medium",
         "cooldown_seconds": 60,
         "geoip": true,
+        "notify_on_start": true,
         "telegram": {
             "enabled": true,
             "bot_token": "REPLACE_WITH_YOUR_BOT_TOKEN",

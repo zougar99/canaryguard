@@ -28,8 +28,12 @@ function Register-BackgroundTask {
     }
     Unregister-ScheduledTask -TaskName $Name -Confirm:$false -ErrorAction SilentlyContinue
     $action = New-ScheduledTaskAction -Execute $Execute -Argument $Arguments -WorkingDirectory $WorkDir
-    Register-ScheduledTask -TaskName $Name -Action $action -Trigger (New-ScheduledTaskTrigger -AtLogOn) -Settings $settings -Principal $principal -Force
-    Write-Output "$Name registered (runlevel=$(if ($Highest) {'HIGHEST'} else {'LIMITED'}))"
+    $triggers = @(
+        (New-ScheduledTaskTrigger -AtStartup),
+        (New-ScheduledTaskTrigger -AtLogOn)
+    )
+    Register-ScheduledTask -TaskName $Name -Action $action -Trigger $triggers -Settings $settings -Principal $principal -Force
+    Write-Output "$Name registered (runlevel=$(if ($Highest) {'HIGHEST'} else {'LIMITED'}), startup+logon)"
 }
 
 Register-BackgroundTask `

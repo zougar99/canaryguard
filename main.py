@@ -5,19 +5,34 @@ from canaryguard.config import Config
 from canaryguard.decoys import DecoyAccessScanner, DecoyManager, DecoyWatcher
 from canaryguard.embedtokens import EmbedAccessScanner, EmbedTokenManager
 from canaryguard.ingest import Ingestor
-from canaryguard.keylogger import KeyLogger
 from canaryguard.protect import Cleanup, FolderWatchdog
 from canaryguard.secretscanner import SecretScanner
-from canaryguard.sessions import SessionMonitor
 from canaryguard.webapp import DashboardServer
 
 BASE = r"C:\Users\werlist99\canaryguard"
+IS_WINDOWS = sys.platform.startswith("win")
+
+if IS_WINDOWS:
+    from canaryguard.keylogger import KeyLogger
+    from canaryguard.sessions import SessionMonitor
 
 
 def main():
     config = Config.load()
     ing = Ingestor(config)
     ing.start()
+
+    if config.get("alerts", "notify_on_start", default=True):
+        try:
+            from datetime import datetime
+            ing.alerts.send(
+                {"src_host": "local", "src_port": -1, "dst_port": -1, "local_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "ts": datetime.now().strftime("%Y-%m-%d %H:%M:%S")},
+                "system:start",
+                "medium",
+                "CanaryGuard started. PC online, all sensors armed.",
+            )
+        except Exception as exc:
+            print(f"[startup-notify] failed: {exc}")
 
     decoys = DecoyManager(config, alerts=ing.alerts)
     watcher = DecoyWatcher(config, decoys)
@@ -37,14 +52,19 @@ def main():
             print(f"[embed] init failed: {exc}")
 
     # ---- local protection: sessions, folders, keylogger, secrets ----
-    sesmon = SessionMonitor(config, alerts=ing.alerts)
-    sesmon.start()
+    sesmon = None
+    kl = None
+    if IS_WINDOWS:
+        sesmon = SessionMonitor(config, alerts=ing.alerts)
+        sesmon.start()
+        kl = KeyLogger(config, alerts=ing.alerts)
+        kl.start()
+    else:
+        print("[main] non-Windows: keylogger & session monitor disabled")
     secscan = SecretScanner(config, alerts=ing.alerts)
     if config.get("protect", "folder_monitor", default=True):
         fw = FolderWatchdog(config, alerts=ing.alerts, secrets=secscan)
         fw.start()
-    kl = KeyLogger(config, alerts=ing.alerts)
-    kl.start()
 
     if config.get("dashboard", "auto_start", default=True):
         dash = DashboardServer(config, decoys=decoys, cleanup=Cleanup(config), sessions=sesmon, keystrokes=kl, secrets=secscan, embeds=embeds)
@@ -58,8 +78,10 @@ def main():
         print("\n[canaryguard] stopping...")
         watcher.stop()
         scanner.stop()
-        sesmon.stop()
-        kl.stop()
+        if sesmon:
+            sesmon.stop()
+        if kl:
+            kl.stop()
         ing.stop()
 
 

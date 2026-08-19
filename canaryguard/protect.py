@@ -89,21 +89,32 @@ class FolderWatchdog:
                     continue
 
                 class Handler(FileSystemEventHandler):
+                    def _suspicious(self, path):
+                        ext = os.path.splitext(path)[1].lower()
+                        return ext in SUSPICIOUS_EXT or "Startup" in path
+
                     def on_created(self, event):
-                        self._handle(event, "created", not event.is_directory)
+                        if event.is_directory:
+                            self._handle(event, "created", False)
+                            return
+                        self._handle(event, "created", self._suspicious(event.src_path))
 
                     def on_deleted(self, event):
-                        self._handle(event, "deleted", not event.is_directory)
+                        if event.is_directory:
+                            self._handle(event, "deleted", False)
+                            return
+                        self._handle(event, "deleted", self._suspicious(event.src_path))
 
                     def on_modified(self, event):
                         if event.is_directory:
                             return
-                        ext = os.path.splitext(event.src_path)[1].lower()
-                        if ext in SUSPICIOUS_EXT or "Startup" in event.src_path:
-                            self._handle(event, "modified", True)
+                        self._handle(event, "modified", self._suspicious(event.src_path))
 
                     def on_moved(self, event):
-                        self._handle(event, "moved", not event.is_directory)
+                        if event.is_directory:
+                            self._handle(event, "moved", False)
+                            return
+                        self._handle(event, "moved", self._suspicious(event.src_path))
 
                 observer = Observer()
                 handler = Handler()
