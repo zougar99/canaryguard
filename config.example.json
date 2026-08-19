@@ -37,7 +37,10 @@
     "dashboard": {
         "host": "0.0.0.0",
         "port": 8080,
-        "auto_start": true
+        "auto_start": true,
+        "username": "admin",
+        "password": "CHANGE_ME_STRONG_PASSWORD",
+        "secret_key": "RANDOM_LONG_STRING"
     },
     "ingest": {
         "poll_seconds": 2,
@@ -46,7 +49,7 @@
     "decoys": {
         "monitor_enabled": true,
         "folder": "/opt/canaryguard/CanaryDecoys",
-        "beacon_host": "YOUR_SERVER_IP_OR_DOMAIN",
+        "beacon_host": "YOUR_DDNS_DOMAIN_OR_SERVER_IP",
         "cooldown_seconds": 60
     },
     "protect": {

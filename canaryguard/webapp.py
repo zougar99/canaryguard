@@ -1,12 +1,16 @@
+import functools
 import json
 import os
+import secrets as pysecrets
 import threading
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, redirect, render_template, request, session, url_for
 
 from .config import get_store
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+
+AUTH_EXEMPT_PREFIXES = ("/login", "/t/", "/static/")
 
 
 class DashboardServer:
@@ -21,10 +25,50 @@ class DashboardServer:
         self.secrets = secrets
         self.embeds = embeds
         self.app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"), static_folder=os.path.join(BASE_DIR, "static"))
+        self.app.secret_key = config.get("dashboard", "secret_key", default=pysecrets.token_hex(32))
+        self._username = config.get("dashboard", "username", default="admin")
+        self._password = config.get("dashboard", "password", default=None)
         self._register_routes()
+
+    def _auth_enabled(self):
+        return bool(self._password)
+
+    def _authorized(self):
+        return session.get("cg_authed") is True
+
+    def _before_request(self):
+        if not self._auth_enabled():
+            return None
+        path = request.path
+        if path.startswith(AUTH_EXEMPT_PREFIXES):
+            return None
+        if self._authorized():
+            return None
+        if request.path.startswith("/api/"):
+            return jsonify({"error": "unauthorized"}), 401
+        return redirect(url_for("login"))
 
     def _register_routes(self):
         app = self.app
+        app.before_request(self._before_request)
+
+        @app.route("/login", methods=["GET", "POST"])
+        def login():
+            if not self._auth_enabled():
+                return redirect(url_for("index"))
+            if request.method == "POST":
+                user = (request.form.get("username") or "").strip()
+                pwd = request.form.get("password") or ""
+                if user == self._username and pwd == self._password:
+                    session["cg_authed"] = True
+                    return redirect(url_for("index"))
+                return render_template("login.html", error="Invalid credentials"), 401
+            return render_template("login.html", error=None)
+
+        @app.route("/logout")
+        def logout():
+            session.pop("cg_authed", None)
+            return redirect(url_for("login"))
 
         @app.route("/")
         def index():

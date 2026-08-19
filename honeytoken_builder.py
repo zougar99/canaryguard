@@ -132,7 +132,8 @@ class HoneytokenBuilderApp:
                 f"Secret:   {secret[:40]}{'...' if len(secret) > 40 else ''}\n"
                 f"Hidden:   LSB steganography / metadata / zero-width\n\n"
                 f"The file looks normal. Anyone who opens it on this PC\n"
-                f"or follows the beacon will fire a critical alert.")
+                f"or follows the beacon (even from another machine) will\n"
+                f"fire a critical alert to your Telegram.")
         except Exception as exc:
             messagebox.showerror("Error", str(exc))
         finally:

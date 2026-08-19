@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CanaryGuard - Login</title>
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; background:#0d1117; color:#e6edf3;
+         display:flex; align-items:center; justify-content:center; min-height:100vh; }
+  .card { background:#161b22; border:1px solid #30363d; border-radius:8px;
+          padding:32px; width:320px; }
+  h1 { font-size:20px; margin-bottom:4px; }
+  p.sub { color:#8b949e; font-size:13px; margin-bottom:20px; }
+  label { display:block; font-size:13px; color:#8b949e; margin:12px 0 4px; }
+  input { width:100%; padding:8px 10px; background:#0d1117; border:1px solid #30363d;
+          border-radius:6px; color:#e6edf3; font-size:14px; }
+  button { width:100%; margin-top:20px; padding:10px; background:#238636; border:none;
+           border-radius:6px; color:#fff; font-size:14px; cursor:pointer; }
+  button:hover { background:#2ea043; }
+  .err { color:#f85149; font-size:13px; margin-top:12px; }
+</style>
+</head>
+<body>
+  <form class="card" method="post" action="/login">
+    <h1>CanaryGuard</h1>
+    <p class="sub">Protected dashboard - sign in</p>
+    <label for="username">Username</label>
+    <input id="username" name="username" autocomplete="username" required autofocus>
+    <label for="password">Password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required>
+    <button type="submit">Sign in</button>
+    {% if error %}<div class="err">{{ error }}</div>{% endif %}
+  </form>
+</body>
+</html>
