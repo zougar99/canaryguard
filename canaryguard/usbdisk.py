@@ -30,6 +30,21 @@ def _volume_label(mountpoint):
     return ""
 
 
+def _usb_device_info():
+    """Return USB disk devices (model + serial) via WMI/CIM, best-effort."""
+    try:
+        import subprocess
+        out = subprocess.run(
+            ["powershell", "-NoProfile", "-Command",
+             "Get-CimInstance Win32_DiskDrive | Where-Object {$_.InterfaceType -eq 'USB'} | "
+             "ForEach-Object { \"$($_.Model) | SN=$($_.SerialNumber)\" }"],
+            capture_output=True, text=True, timeout=10,
+        )
+        return [l.strip() for l in out.stdout.splitlines() if l.strip()]
+    except Exception:
+        return []
+
+
 class USBDiskMonitor:
     """Watch drives and folders: connections, Explorer opens, file activity,
     and programs executed from them.
@@ -57,6 +72,10 @@ class USBDiskMonitor:
         self.extra_folders = [
             os.path.normpath(p) + os.sep
             for p in config.get("usb_monitor", "extra_folders", default=[])
+        ]
+        self.watch_drives = [
+            d.replace("\\", "").replace("/", "").upper()
+            for d in config.get("usb_monitor", "watch_drives", default=[])
         ]
         self._stop = threading.Event()
         self._thread = None
@@ -121,14 +140,19 @@ class USBDiskMonitor:
         kind = "removable" if removable else "drive"
         desc = f"{label} ({fstype}, {kind})" if label else f"({fstype}, {kind})"
         details = f"{mp} {desc}"
+        devices = _usb_device_info() if removable else []
+        if devices:
+            details += " | " + "; ".join(devices[:3])
         self.store.insert_usb_event("connected", mp, details)
         self.logger(f"[usb] DRIVE CONNECTED: {details}")
         if self.notify_connect and not self._within(self._open_cd, f"conn:{mp}"):
             icon = "\U0001f50c" if removable else "\U0001f4bf"
+            lines = [f"drive: {mp}", f"label: {label or '-'}", f"type: {fstype} {kind}",
+                     f"time: {_now()}"]
+            for dev in devices[:2]:
+                lines.append(f"device: {dev}")
             self._alert("usb:connect", "high" if removable else "medium",
-                        f"{icon} {'USB' if removable else 'DRIVE'} CONNECTED",
-                        [f"drive: {mp}", f"label: {label or '-'}", f"type: {fstype} {kind}",
-                         f"time: {_now()}"])
+                        f"{icon} {'USB' if removable else 'DRIVE'} CONNECTED", lines)
         self._attach_watcher(mp)
         self._exec_roots.append(os.path.normpath(mp) + os.sep)
 
@@ -180,11 +204,17 @@ class USBDiskMonitor:
                 if not url.lower().startswith("file:///"):
                     continue
                 path = url[len("file:///"):].replace("/", "\\")
+                drive2 = path[:2].upper() if len(path) >= 2 and path[1] == ":" else ""
+                # filter: only watched drives + dynamically attached (new/USB) drives
+                if self.watch_drives:
+                    on_dynamic = any(drive2 == mp[:2].upper() for mp in list(self._observers))
+                    if drive2 not in self.watch_drives and not on_dynamic:
+                        continue
+                full_drive = drive2 + "\\" if drive2 else "?"
                 if self._within(self._open_cd, f"open:{path.lower()}"):
                     continue
-                drive = path[:2] + "\\" if len(path) >= 2 and path[1] == ":" else ""
                 details = f"opened: {path}"
-                self.store.insert_usb_event("opened", drive or "?", details)
+                self.store.insert_usb_event("opened", full_drive, details)
                 self.logger(f"[usb] FOLDER OPENED: {path}")
                 if self.notify_open:
                     self._alert("usb:open", "medium", f"\U0001f4c2 FOLDER OPENED",

@@ -81,7 +81,22 @@
         "notify_files": true,
         "notify_explorer_open": true,
         "notify_exec": true,
-        "extra_folders": []
+        "extra_folders": [],
+        "watch_drives": ["C:", "H:"]
+    },
+    "netmon": {
+        "enabled": true,
+        "poll_seconds": 5,
+        "cooldown_seconds": 60,
+        "notify": true,
+        "ignore": []
+    },
+    "clipboard_monitor": {
+        "enabled": true,
+        "poll_seconds": 1.5,
+        "mode": "keywords",
+        "cooldown_seconds": 20,
+        "keywords": null
     },
     "secrets": {
         "enabled": true,

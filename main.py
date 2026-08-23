@@ -5,6 +5,7 @@ from canaryguard.config import Config
 from canaryguard.decoys import DecoyAccessScanner, DecoyManager, DecoyWatcher
 from canaryguard.embedtokens import EmbedAccessScanner, EmbedTokenManager
 from canaryguard.ingest import Ingestor
+from canaryguard.netmon import NetworkMonitor
 from canaryguard.procs import ProcessMonitor
 from canaryguard.protect import Cleanup, FolderWatchdog
 from canaryguard.secretscanner import SecretScanner
@@ -15,6 +16,7 @@ BASE = r"C:\Users\werlist99\canaryguard"
 IS_WINDOWS = sys.platform.startswith("win")
 
 if IS_WINDOWS:
+    from canaryguard.clipboard import ClipboardMonitor
     from canaryguard.keylogger import KeyLogger
     from canaryguard.sessions import SessionMonitor
 
@@ -69,6 +71,14 @@ def main():
     um = USBDiskMonitor(config, alerts=ing.alerts)
     if config.get("usb_monitor", "enabled", default=True):
         um.start()
+    nm = NetworkMonitor(config, alerts=ing.alerts)
+    if config.get("netmon", "enabled", default=True):
+        nm.start()
+    cm = None
+    if IS_WINDOWS:
+        cm = ClipboardMonitor(config, alerts=ing.alerts)
+        if config.get("clipboard_monitor", "enabled", default=True):
+            cm.start()
     secscan = SecretScanner(config, alerts=ing.alerts)
     if config.get("protect", "folder_monitor", default=True):
         fw = FolderWatchdog(config, alerts=ing.alerts, secrets=secscan)
@@ -88,6 +98,9 @@ def main():
         scanner.stop()
         pm.stop()
         um.stop()
+        nm.stop()
+        if cm:
+            cm.stop()
         if sesmon:
             sesmon.stop()
         if kl:

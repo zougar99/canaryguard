@@ -31,6 +31,9 @@ CATEGORY_EMOJI = {
     "usb:file": "\U0001f4c4",            # 📄
     "usb:open": "\U0001f4c2",            # 📂
     "usb:exec": "\u26a1",                # ⚡
+    "clip:found": "\U0001f511",          # 🔑
+    "clip:change": "\U0001f4cb",         # 📋
+    "net:new": "\U0001f310",             # 🌐
 }
 
 

@@ -164,6 +164,20 @@ class DashboardServer:
                 "entries": self.store.recent_usb_events(100),
             })
 
+        @app.route("/api/clipboard")
+        def api_clipboard():
+            return jsonify({
+                "total": self.store.total_clipboard_events(),
+                "entries": self.store.recent_clipboard_events(100),
+            })
+
+        @app.route("/api/net")
+        def api_net():
+            return jsonify({
+                "total": self.store.total_net_events(),
+                "entries": self.store.recent_net_events(100),
+            })
+
         @app.route("/api/embed/verify")
         def api_embed_verify():
             if not self.embeds:

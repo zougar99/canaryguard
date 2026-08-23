@@ -40,7 +40,8 @@ Register-BackgroundTask `
     -Name "CanaryGuard" `
     -Execute 'C:\Program Files\PowerShell\7\pwsh.exe' `
     -Arguments '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\werlist99\canaryguard\start-canaryguard.ps1"' `
-    -WorkDir 'C:\Users\werlist99\canaryguard'
+    -WorkDir 'C:\Users\werlist99\canaryguard' `
+    -Highest
 
 Register-BackgroundTask `
     -Name "OpenCanaryHoneypot" `
@@ -48,11 +49,15 @@ Register-BackgroundTask `
     -Arguments '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\werlist99\opencanary\start-opencanary.ps1"' `
     -WorkDir 'C:\Users\werlist99\opencanary'
 
-Register-BackgroundTask `
-    -Name "CanaryGuard" `
-    -Execute 'C:\Program Files\PowerShell\7\pwsh.exe' `
-    -Arguments '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\werlist99\canaryguard\start-canaryguard.ps1"' `
-    -WorkDir 'C:\Users\werlist99\canaryguard' `
-    -Highest
+# --- tamper watchdog: every minute, revives killed services + alerts ---
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -Hidden
+$principal = New-ScheduledTaskPrincipal -UserId $env:USERNAME -LogonType Interactive -RunLevel Highest
+$tTrigger = New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 1) -RepetitionDuration (New-TimeSpan -Days 3650)
+Unregister-ScheduledTask -TaskName "TamperGuard" -Confirm:$false -ErrorAction SilentlyContinue
+$tAction = New-ScheduledTaskAction -Execute 'C:\Program Files\PowerShell\7\pwsh.exe' `
+    -Argument '-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "C:\Users\werlist99\canaryguard\tamper-check.ps1"' `
+    -WorkingDirectory 'C:\Users\werlist99\canaryguard'
+Register-ScheduledTask -TaskName "TamperGuard" -Action $tAction -Trigger $tTrigger -Settings $settings -Principal $principal -Force | Out-Null
+Write-Output "TamperGuard registered (every 1 min)"
 
 Write-Output "done"

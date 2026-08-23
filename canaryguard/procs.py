@@ -80,10 +80,27 @@ class ProcessMonitor:
         path = info["exe"] or "(unknown)"
         user = info["user"]
         now = _now()
+
+        # enrich: command line + parent process (best effort)
+        cmd = ""
+        parent = ""
+        try:
+            proc = psutil.Process(pid)
+            cl = proc.cmdline()
+            cmd = " ".join(cl)[:200] if cl else ""
+            ppid = proc.ppid()
+            parent = psutil.Process(ppid).name() if ppid else ""
+        except Exception:
+            pass
+
         details = f"{ev_type}: {name} pid={pid} user={user}"
+        if parent:
+            details += f" parent={parent}"
+        if cmd:
+            details += f" cmd={cmd[:120]}"
         self.store.insert_process_event(ev_type, name, pid, path, user, details)
         label = "APP OPENED" if ev_type == "started" else "APP CLOSED"
-        self.logger(f"[procs] {label}: {name} (pid={pid})")
+        self.logger(f"[procs] {label}: {name} (pid={pid})" + (f" parent={parent}" if parent else ""))
 
         if not self.alerts:
             return
@@ -96,12 +113,14 @@ class ProcessMonitor:
         self._cooldown[f"{ev_type}:{name}"] = time.monotonic()
 
         icon = "\U0001f680" if ev_type == "started" else "\U0001f6aa"
+        lines = [f"app: {name}", f"path: {path}", f"user: {user or 'local'}"]
+        if parent:
+            lines.append(f"parent: {parent}")
+        if cmd:
+            lines.append(f"cmd: {cmd[:150]}")
+        lines.append(f"time: {now}")
         msg = (
-            f"{icon} {label}\n"
-            f"app: {name}\n"
-            f"path: {path}\n"
-            f"user: {user or 'local'}\n"
-            f"time: {now}"
+            f"{icon} {label}\n" + "\n".join(lines)
         )
         event = {"src_host": "local", "src_port": -1, "dst_port": -1, "local_time": now, "ts": now}
         self.alerts.send(event, f"proc:{'start' if ev_type == 'started' else 'exit'}", "medium", msg)

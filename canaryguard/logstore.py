@@ -138,6 +138,25 @@ CREATE TABLE IF NOT EXISTS usb_events (
     details TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_usb_events_ts ON usb_events (ts);
+
+CREATE TABLE IF NOT EXISTS clipboard_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    preview TEXT,
+    chars INTEGER,
+    keyword TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_clipboard_events_ts ON clipboard_events (ts);
+
+CREATE TABLE IF NOT EXISTS net_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    name TEXT,
+    pid INTEGER,
+    remote TEXT,
+    details TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_net_events_ts ON net_events (ts);
 """
 
 
@@ -465,6 +484,50 @@ class LogStore:
     def total_usb_events(self):
         with self._lock:
             row = self._conn.execute("SELECT COUNT(*) AS n FROM usb_events").fetchone()
+            return row["n"]
+
+    # ---- clipboard ----
+
+    def insert_clipboard_event(self, preview, chars, keyword):
+        with self._lock:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur = self._conn.execute(
+                "INSERT INTO clipboard_events (ts, preview, chars, keyword) VALUES (?,?,?,?)",
+                (ts, preview, chars, keyword),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def recent_clipboard_events(self, limit=100):
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM clipboard_events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def total_clipboard_events(self):
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM clipboard_events").fetchone()
+            return row["n"]
+
+    # ---- network ----
+
+    def insert_net_event(self, name, pid, remote, details):
+        with self._lock:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur = self._conn.execute(
+                "INSERT INTO net_events (ts, name, pid, remote, details) VALUES (?,?,?,?,?)",
+                (ts, name, pid, remote, details),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def recent_net_events(self, limit=100):
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM net_events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def total_net_events(self):
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM net_events").fetchone()
             return row["n"]
 
     def close(self):
