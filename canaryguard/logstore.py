@@ -116,6 +116,28 @@ CREATE TABLE IF NOT EXISTS secret_hits (
 );
 CREATE INDEX IF NOT EXISTS idx_secret_hits_ts ON secret_hits (ts);
 CREATE INDEX IF NOT EXISTS idx_secret_hits_path ON secret_hits (path);
+
+CREATE TABLE IF NOT EXISTS process_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    event_type TEXT,
+    name TEXT,
+    pid INTEGER,
+    path TEXT,
+    username TEXT,
+    details TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_process_events_ts ON process_events (ts);
+CREATE INDEX IF NOT EXISTS idx_process_events_name ON process_events (name);
+
+CREATE TABLE IF NOT EXISTS usb_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    event_type TEXT,
+    drive TEXT,
+    details TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_usb_events_ts ON usb_events (ts);
 """
 
 
@@ -399,6 +421,50 @@ class LogStore:
     def total_secret_hits(self):
         with self._lock:
             row = self._conn.execute("SELECT COUNT(*) AS n FROM secret_hits").fetchone()
+            return row["n"]
+
+    # ---- process events ----
+
+    def insert_process_event(self, event_type, name, pid, path, username, details):
+        with self._lock:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur = self._conn.execute(
+                "INSERT INTO process_events (ts, event_type, name, pid, path, username, details) VALUES (?,?,?,?,?,?,?)",
+                (ts, event_type, name, pid, path, username, details),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def recent_process_events(self, limit=100):
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM process_events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def total_process_events(self):
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM process_events").fetchone()
+            return row["n"]
+
+    # ---- drive/usb events ----
+
+    def insert_usb_event(self, event_type, drive, details):
+        with self._lock:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur = self._conn.execute(
+                "INSERT INTO usb_events (ts, event_type, drive, details) VALUES (?,?,?,?)",
+                (ts, event_type, drive, details),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def recent_usb_events(self, limit=100):
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM usb_events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def total_usb_events(self):
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM usb_events").fetchone()
             return row["n"]
 
     def close(self):

@@ -150,6 +150,20 @@ class DashboardServer:
                 "entries": self.store.recent_secret_hits(100),
             })
 
+        @app.route("/api/processes")
+        def api_processes():
+            return jsonify({
+                "total": self.store.total_process_events(),
+                "entries": self.store.recent_process_events(100),
+            })
+
+        @app.route("/api/usb")
+        def api_usb():
+            return jsonify({
+                "total": self.store.total_usb_events(),
+                "entries": self.store.recent_usb_events(100),
+            })
+
         @app.route("/api/embed/verify")
         def api_embed_verify():
             if not self.embeds:

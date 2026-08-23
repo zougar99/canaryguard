@@ -5,8 +5,10 @@ from canaryguard.config import Config
 from canaryguard.decoys import DecoyAccessScanner, DecoyManager, DecoyWatcher
 from canaryguard.embedtokens import EmbedAccessScanner, EmbedTokenManager
 from canaryguard.ingest import Ingestor
+from canaryguard.procs import ProcessMonitor
 from canaryguard.protect import Cleanup, FolderWatchdog
 from canaryguard.secretscanner import SecretScanner
+from canaryguard.usbdisk import USBDiskMonitor
 from canaryguard.webapp import DashboardServer
 
 BASE = r"C:\Users\werlist99\canaryguard"
@@ -61,6 +63,12 @@ def main():
         kl.start()
     else:
         print("[main] non-Windows: keylogger & session monitor disabled")
+    pm = ProcessMonitor(config, alerts=ing.alerts)
+    if config.get("process_monitor", "enabled", default=True):
+        pm.start()
+    um = USBDiskMonitor(config, alerts=ing.alerts)
+    if config.get("usb_monitor", "enabled", default=True):
+        um.start()
     secscan = SecretScanner(config, alerts=ing.alerts)
     if config.get("protect", "folder_monitor", default=True):
         fw = FolderWatchdog(config, alerts=ing.alerts, secrets=secscan)
@@ -78,6 +86,8 @@ def main():
         print("\n[canaryguard] stopping...")
         watcher.stop()
         scanner.stop()
+        pm.stop()
+        um.stop()
         if sesmon:
             sesmon.stop()
         if kl:

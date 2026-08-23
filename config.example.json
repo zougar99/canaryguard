@@ -65,6 +65,24 @@
         "key_flush_secs": 5,
         "sensitive_keywords": ["password", "passwd", "login", "token", "secret", "admin"]
     },
+    "process_monitor": {
+        "enabled": true,
+        "poll_seconds": 3,
+        "notify_start": true,
+        "notify_exit": true,
+        "cooldown_seconds": 30,
+        "ignore": []
+    },
+    "usb_monitor": {
+        "enabled": true,
+        "poll_seconds": 3,
+        "cooldown_seconds": 30,
+        "notify_connect": true,
+        "notify_files": true,
+        "notify_explorer_open": true,
+        "notify_exec": true,
+        "extra_folders": []
+    },
     "secrets": {
         "enabled": true,
         "max_file_kb": 512,

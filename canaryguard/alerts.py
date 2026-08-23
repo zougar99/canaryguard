@@ -25,6 +25,12 @@ CATEGORY_EMOJI = {
     "file:moved": "\U0001f4c2",          # 📂
     "session": "\U0001f6aa",             # 🚪
     "secret:found": "\U0001f511",        # 🔑
+    "proc:start": "\U0001f680",          # 🚀
+    "proc:exit": "\U0001f6aa",           # 🚪
+    "usb:connect": "\U0001f50c",         # 🔌
+    "usb:file": "\U0001f4c4",            # 📄
+    "usb:open": "\U0001f4c2",            # 📂
+    "usb:exec": "\u26a1",                # ⚡
 }
 
 

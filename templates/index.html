@@ -74,6 +74,8 @@
     <button data-tab="keys">Keystrokes</button>
     <button data-tab="files">Files</button>
     <button data-tab="secrets">Secrets</button>
+<button data-tab="processes">Processes</button>
+<button data-tab="usb">Drives/USB</button>
     <button data-tab="cleanup">Cleanup</button>
   </nav>
 </header>
@@ -165,6 +167,22 @@
       <p class="section-title">Embedded honeytokens — hidden tokens in normal files</p>
       <table><thead><tr><th>Kind</th><th>Token</th><th>Status</th><th>File</th></tr></thead>
       <tbody id="embeds"></tbody></table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-processes">
+    <div class="card">
+      <p class="section-title">Process monitor — applications opened / closed on this PC <span class="mut" id="procs-count"></span></p>
+      <table><thead><tr><th>Time</th><th>Event</th><th>Application</th><th>PID</th><th>User</th><th>Path</th></tr></thead>
+      <tbody id="procs"></tbody></table>
+    </div>
+  </section>
+
+  <section class="tab" id="tab-usb">
+    <div class="card">
+      <p class="section-title">Drive / USB monitor — connections, folder opens, file activity, executions <span class="mut" id="usb-count"></span></p>
+      <table><thead><tr><th>Time</th><th>Event</th><th>Drive</th><th>Details</th></tr></thead>
+      <tbody id="usb"></tbody></table>
     </div>
   </section>
 
@@ -305,6 +323,28 @@ function renderSecrets(d){
     : '<tr><td colspan="4" class="mut">No secrets found yet</td></tr>';
 }
 
+function renderProcs(d){
+  document.getElementById('procs-count').textContent = `(total ${d.total})`;
+  document.getElementById('procs').innerHTML = d.entries.length ? d.entries.map(p => `
+    <tr><td class="mut">${esc(p.ts)}</td>
+    <td><span class="badge ${p.event_type==='started'?'b-ok':'b-file'}">${p.event_type==='started'?'OPENED':'CLOSED'}</span></td>
+    <td class="mono">${esc(p.name)}</td>
+    <td class="mut">${esc(String(p.pid))}</td>
+    <td class="mut">${esc(p.username||'')}</td>
+    <td class="mono mut">${esc(p.path)}</td></tr>`).join('')
+    : '<tr><td colspan="6" class="mut">No process events yet</td></tr>';
+}
+
+function renderUsb(d){
+  document.getElementById('usb-count').textContent = `(total ${d.total})`;
+  document.getElementById('usb').innerHTML = d.entries.length ? d.entries.map(u => `
+    <tr><td class="mut">${esc(u.ts)}</td>
+    <td><span class="badge ${u.event_type==='connected'?'b-secret':u.event_type==='executed'?'b-fail':'b-low'}">${esc(u.event_type.toUpperCase())}</span></td>
+    <td class="mono">${esc(u.drive)}</td>
+    <td class="mono mut">${esc(u.details)}</td></tr>`).join('')
+    : '<tr><td colspan="4" class="mut">No drive events yet</td></tr>';
+}
+
 async function renderEmbeds(){
   try{
     const r = await fetch('/api/embed/verify');
@@ -368,13 +408,15 @@ async function refresh(){
   renderTopIps(s.top_ips);
   if(!window._mapDrawn){ window._mapDrawn = true; renderMap(s.geo); }
 
-  const [ev, cr, ss, ks, fs, sc] = await Promise.all([
+  const [ev, cr, ss, ks, fs, sc, pc, us] = await Promise.all([
     (await fetch('/api/events')).json(),
     (await fetch('/api/creds')).json(),
     (await fetch('/api/sessions')).json(),
     (await fetch('/api/keys')).json(),
     (await fetch('/api/files')).json(),
     (await fetch('/api/secrets')).json(),
+    (await fetch('/api/processes')).json(),
+    (await fetch('/api/usb')).json(),
   ]);
   renderEvents(ev);
   renderCreds(cr);
@@ -382,6 +424,8 @@ async function refresh(){
   renderKeys(ks);
   renderFiles(fs);
   renderSecrets(sc);
+  renderProcs(pc);
+  renderUsb(us);
   renderEmbeds();
   document.getElementById('c-sessions').textContent = ss.total;
   document.getElementById('c-keys').textContent = ks.total;
