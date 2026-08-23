@@ -55,24 +55,66 @@ class AlertManager:
         self.geoip_enabled = cfg.get("geoip", True)
         self.muted = {c.lower() for c in (cfg.get("mute_categories", None) or [])}
         self.host = platform.node() or "PC"
+        # night escalation + quiet hours
+        self.night_escalate = cfg.get("night_escalation", True)
+        self.night_start = cfg.get("night_start", "23:00")
+        self.night_end = cfg.get("night_end", "07:00")
+        self.night_floor = cfg.get("night_floor", "high")  # at night only >= floor interrupts; rest -> morning digest
+        # smart batching (anti-spam): duplicates during cooldown get counted
+        self.batch_limit = int(cfg.get("batch_limit", 3))
+        self.batch_window = int(cfg.get("batch_window_seconds", 300))
+        # screenshot attachments for critical categories
+        self.shot_categories = {c.lower() for c in (cfg.get("screenshot_categories", None) or ["usb:connect", "auth:fail", "usb:exec"])}
+        self.digest_time = cfg.get("digest_time", "08:00")
         self.telegram = cfg.get("telegram", {})
         self.discord = cfg.get("discord", {})
         self.slack = cfg.get("slack", {})
         self.email = cfg.get("email", {})
         self._lock = threading.Lock()
-        self._last_sent = {}  # (channel, subject) -> ts
+        self._last_sent = {}    # (channel, subject) -> ts
+        self._suppressed = {}   # (channel, subject) -> count of cooldown-skipped sends
+        self._bg_started = False
 
     def _within_cooldown(self, key):
         now = time.monotonic()
         last = self._last_sent.get(key, 0)
         return (now - last) < self.cooldown
 
+    def _is_night(self):
+        now = time.localtime()
+        cur = now.tm_hour * 60 + now.tm_min
+        sh, sm = map(int, self.night_start.split(":"))
+        eh, em = map(int, self.night_end.split(":"))
+        start, end, t = sh * 60 + sm, eh * 60 + em, cur
+        if start <= end:
+            return start <= t < end
+        return t >= start or t < end  # window crosses midnight
+
+    @staticmethod
+    def _bump(sev):
+        order = ["info", "low", "medium", "high", "critical"]
+        i = order.index(sev) if sev in order else 2
+        return order[min(i + 1, len(order) - 1)]
+
     def send(self, event, category, severity, extra=""):
         if not self.enabled:
             return
         if category.lower() in self.muted:
             return
+
+        night = self._is_night()
+        if night and self.night_escalate:
+            severity = self._bump(severity)  # any activity at night -> one level up
+
         if SEVERITY_ORDER.get(severity, 0) < SEVERITY_ORDER.get(self.min_sev, 2):
+            return
+
+        # quiet hours: below floor at night -> hold for morning digest
+        if night and SEVERITY_ORDER.get(severity, 0) < SEVERITY_ORDER.get(self.night_floor, 3):
+            self.store.insert_held_alert(category, severity,
+                                         f"{category} from {event.get('src_host', 'local')}",
+                                         str(extra)[:300])
+            self.logger(f"[alerts] held for digest: {category} ({severity})")
             return
 
         src = event.get("src_host") or event.get("src_ip") or ""
@@ -83,8 +125,9 @@ class AlertManager:
         sev_emoji = SEVERITY_EMOJI.get(severity, "\U0001f534")
         cat_emoji = CATEGORY_EMOJI.get(category, "\U0001f4a1")
         bar = "\u2500" * 22
+        if night:
+            bar += "\n\U0001f319 NIGHT MODE: severity escalated"
 
-        # HTML mode: safe against _ * [ etc. in dynamic content
         e_extra = html.escape(extra) if extra else ""
         e_src = html.escape(str(src))
         msg = (
@@ -102,6 +145,13 @@ class AlertManager:
         subject = f"OpenCanary [{severity}] {category} from {src}"
         self._dispatch(subject, msg, severity, event)
 
+        # attach screenshot for critical categories
+        if severity in ("high", "critical") and category.lower() in self.shot_categories and \
+                self.telegram.get("enabled") and self.telegram.get("bot_token"):
+            shot = self._grab_screenshot()
+            if shot:
+                self.send_photo(shot, caption=f"\U0001f4f8 screenshot @ {category}")
+
     def _dispatch(self, subject, msg, severity, event):
         channels = []
         if self.telegram.get("enabled") and self.telegram.get("bot_token"):
@@ -115,13 +165,21 @@ class AlertManager:
 
         for name, fn in channels:
             key = (name, subject)
-            if self._within_cooldown(key):
+            now = time.monotonic()
+            last = self._last_sent.get(key, 0)
+            if now - last < self.cooldown:
+                # duplicate inside cooldown -> count it instead of dropping silently
+                self._suppressed[key] = self._suppressed.get(key, 0) + 1
                 continue
-            self._last_sent[key] = time.monotonic()
+            self._last_sent[key] = now
+            n = self._suppressed.pop(key, 0)
+            out = msg
+            if n >= self.batch_limit:
+                out += f"\n\n\u267f +{n} similar alerts suppressed in the last window"
             sent = False
             for attempt in range(1, self.retries + 1):
                 try:
-                    fn(subject, msg)
+                    fn(subject, out)
                     sent = True
                     break
                 except Exception as exc:
@@ -132,6 +190,100 @@ class AlertManager:
                 self.logger(f"[alerts] sent {name} alert: {subject}")
             else:
                 self.logger(f"[alerts] {name} DROPPED after {self.retries} attempts: {subject}")
+
+    # ---- background loops: batch flusher + daily digest ----
+
+    def start_background(self):
+        if self._bg_started:
+            return
+        self._bg_started = True
+        threading.Thread(target=self._flush_loop, daemon=True).start()
+        threading.Thread(target=self._digest_loop, daemon=True).start()
+
+    def _flush_loop(self):
+        while True:
+            time.sleep(60)
+            now = time.monotonic()
+            stale = [(k, n) for k, n in list(self._suppressed.items())
+                     if now - self._last_sent.get(k, 0) >= self.batch_window and n > 0]
+            for key, n in stale:
+                self._suppressed.pop(key, None)
+                chan = key[0]
+                text = (f"\u267f BATCH: {n} duplicate alerts "
+                        f"({html.escape(key[1].split(' from ')[0])}) were suppressed.")
+                try:
+                    if chan == "telegram":
+                        self.send_raw(text)
+                        self.logger(f"[alerts] batch summary sent ({n}x)")
+                except Exception as exc:
+                    self.logger(f"[alerts] batch flush failed: {exc}")
+
+    def _digest_loop(self):
+        while True:
+            try:
+                dh, dm = map(int, self.digest_time.split(":"))
+                now = time.localtime()
+                target = time.mktime((now.tm_year, now.tm_mon, now.tm_mday, dh, dm, 0, 0, 0, -1))
+                if target <= time.time():
+                    target += 86400
+                time.sleep(min(target - time.time(), 3600))
+                if time.time() >= target:
+                    self.send_digest()
+            except Exception as exc:
+                self.logger(f"[alerts] digest loop error: {exc}")
+                time.sleep(300)
+
+    def send_digest(self):
+        """Morning summary: what happened in the last 24h."""
+        try:
+            cats = self.store.counts_by_category(24)
+            sevs = dict(self.store.counts_by_severity(24))
+            ips = self.store.top_ips(3, 24)
+            held = self.store.drain_held_alerts()
+            fails = self.store.failed_logins(24)
+            total = sum(n for _, n in cats)
+            lines = [
+                "\U0001f4ca <b>DAILY DIGEST - last 24h</b>",
+                "<code>" + "\u2500" * 22 + "</code>",
+                f"\U0001f4c8 Total events: <b>{total}</b>  |  critical: <b>{sevs.get('critical', 0)}</b>  high: <b>{sevs.get('high', 0)}</b>",
+            ]
+            top = sorted(cats, key=lambda x: -x[1])[:6]
+            for c, n in top:
+                lines.append(f"  \u2022 {html.escape(c)}: {n}")
+            if fails:
+                lines.append(f"\U0001f512 Failed logins (24h): {fails}")
+            if ips:
+                lines.append("\U0001f310 Top sources: " + ", ".join(
+                    f"{html.escape(ip[0])}({ip[1]})" for ip in ips))
+            if held:
+                lines.append(f"\U0001f319 Night-held alerts: {len(held)}")
+                for h in held[:10]:
+                    lines.append(f"  \u2022 [{h['severity']}] {html.escape(h['category'])} @ {h['ts']}")
+            else:
+                lines.append("\U0001f319 Night-held alerts: 0")
+            self.send_raw("\n".join(lines))
+            self.logger("[alerts] daily digest sent")
+        except Exception as exc:
+            self.logger(f"[alerts] digest failed: {exc}")
+
+    # ---- screenshots ----
+
+    def _grab_screenshot(self):
+        try:
+            from PIL import ImageGrab
+            import io
+            img = ImageGrab.grab()
+            buf = io.BytesIO()
+            img.convert("RGB").save(buf, format="JPEG", quality=55)
+            return buf.getvalue()
+        except Exception as exc:
+            self.logger(f"[alerts] screenshot failed: {exc}")
+            return None
+
+    def send_photo(self, data, caption=""):
+        url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendPhoto"
+        requests.post(url, data={"chat_id": self.telegram["chat_id"], "caption": caption[:900]},
+                      files={"photo": ("shot.jpg", data)}, timeout=20)
 
     def send_raw(self, text):
         """Direct passthrough message (used by dashboard test button)."""

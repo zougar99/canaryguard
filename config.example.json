@@ -9,6 +9,14 @@
         "cooldown_seconds": 60,
         "retries": 3,
         "mute_categories": [],
+        "night_escalation": true,
+        "night_start": "23:00",
+        "night_end": "07:00",
+        "night_floor": "high",
+        "batch_limit": 3,
+        "batch_window_seconds": 300,
+        "screenshot_categories": ["usb:connect", "auth:fail", "usb:exec"],
+        "digest_time": "08:00",
         "geoip": true,
         "notify_on_start": true,
         "telegram": {
@@ -99,6 +107,9 @@
         "mode": "keywords",
         "cooldown_seconds": 20,
         "keywords": null
+    },
+    "telegram_bot": {
+        "enabled": true
     },
     "secrets": {
         "enabled": true,

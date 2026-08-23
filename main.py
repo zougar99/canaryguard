@@ -9,6 +9,7 @@ from canaryguard.netmon import NetworkMonitor
 from canaryguard.procs import ProcessMonitor
 from canaryguard.protect import Cleanup, FolderWatchdog
 from canaryguard.secretscanner import SecretScanner
+from canaryguard.tgbot import TelegramCommandBot as TGBot
 from canaryguard.usbdisk import USBDiskMonitor
 from canaryguard.webapp import DashboardServer
 
@@ -79,6 +80,19 @@ def main():
         cm = ClipboardMonitor(config, alerts=ing.alerts)
         if config.get("clipboard_monitor", "enabled", default=True):
             cm.start()
+    # ---- notification power-ups: night escalation, digest, telegram bot ----
+    ing.alerts.start_background()
+    bot = TGBot(config, alerts=ing.alerts)
+    if config.get("telegram_bot", "enabled", default=True):
+        bot.monitors = {"procs": pm, "usb": um, "net": nm}
+        if cm:
+            bot.monitors["clip"] = cm
+        if sesmon:
+            bot.monitors["sessions"] = sesmon
+        if kl:
+            bot.monitors["keys"] = kl
+        bot.monitors["decoys"] = watcher
+        bot.start()
     secscan = SecretScanner(config, alerts=ing.alerts)
     if config.get("protect", "folder_monitor", default=True):
         fw = FolderWatchdog(config, alerts=ing.alerts, secrets=secscan)
@@ -96,6 +110,7 @@ def main():
         print("\n[canaryguard] stopping...")
         watcher.stop()
         scanner.stop()
+        bot.stop()
         pm.stop()
         um.stop()
         nm.stop()

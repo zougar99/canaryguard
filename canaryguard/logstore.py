@@ -157,6 +157,15 @@ CREATE TABLE IF NOT EXISTS net_events (
     details TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_net_events_ts ON net_events (ts);
+
+CREATE TABLE IF NOT EXISTS held_alerts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    category TEXT,
+    severity TEXT,
+    subject TEXT,
+    extra TEXT
+);
 """
 
 
@@ -529,6 +538,26 @@ class LogStore:
         with self._lock:
             row = self._conn.execute("SELECT COUNT(*) AS n FROM net_events").fetchone()
             return row["n"]
+
+    # ---- held (night-quiet) alerts ----
+
+    def insert_held_alert(self, category, severity, subject, extra=""):
+        with self._lock:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur = self._conn.execute(
+                "INSERT INTO held_alerts (ts, category, severity, subject, extra) VALUES (?,?,?,?,?)",
+                (ts, category, severity, subject, extra),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def drain_held_alerts(self):
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM held_alerts ORDER BY id").fetchall()
+            if rows:
+                self._conn.execute("DELETE FROM held_alerts")
+                self._conn.commit()
+            return [dict(r) for r in rows]
 
     def close(self):
         with self._lock:
