@@ -92,7 +92,8 @@
         "notify_explorer_open": true,
         "notify_exec": true,
         "extra_folders": [],
-        "watch_drives": ["C:", "H:"]
+        "watch_drives": ["C:", "H:"],
+        "block_unknown_writes": false
     },
     "netmon": {
         "enabled": true,
@@ -110,6 +111,30 @@
     },
     "telegram_bot": {
         "enabled": true
+    },
+    "lan_monitor": {
+        "enabled": true,
+        "poll_seconds": 60,
+        "notify": true,
+        "known_macs": []
+    },
+    "downloads_monitor": {
+        "enabled": true,
+        "notify": true,
+        "folder": null,
+        "extensions": []
+    },
+    "cam_monitor": {
+        "enabled": true,
+        "poll_seconds": 3,
+        "notify": true
+    },
+    "panic": {
+        "enabled": true,
+        "idle_lock_minutes": 15,
+        "notify_idle_lock": false,
+        "lock_on_bruteforce": true,
+        "lock_on_usb_grab": true
     },
     "secrets": {
         "enabled": true,

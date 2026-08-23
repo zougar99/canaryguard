@@ -74,10 +74,12 @@ class DecoyManager:
 
     def generate(self, kinds=None):
         os.makedirs(self.folder, exist_ok=True)
-        kinds = kinds or ["txt", "csv", "pdf", "bat", "ini", "sql"]
+        kinds = kinds or ["txt", "csv", "pdf", "bat", "ini", "sql", "wallet", "2fa"]
         created = []
         for kind in kinds:
-            fn = getattr(self, f"_make_{kind}")
+            fn = getattr(self, f"_make_{kind}", None)
+            if not fn:
+                continue
             p = fn()
             created.append(p)
         self.logger(f"[decoys] generated {len(created)} decoys in {self.folder}")
@@ -215,6 +217,52 @@ class DecoyManager:
         with open(path, "w", encoding="utf-8") as fh:
             fh.write(body)
         return path
+
+
+    def start_maintenance(self):
+        """Keep decoys convincing: refresh timestamps daily so they look alive."""
+        import threading
+
+        def _loop():
+            while True:
+                time.sleep(21600)  # every 6h
+                try:
+                    now = time.time()
+                    for name in os.listdir(self.folder):
+                        p = os.path.join(self.folder, name)
+                        if os.path.isfile(p):
+                            os.utime(p, (now - random.randint(60, 86400),) * 2)
+                    self.logger("[decoys] maintenance: refreshed timestamps")
+                except Exception as exc:
+                    self.logger(f"[decoys] maintenance error: {exc}")
+
+        threading.Thread(target=_loop, daemon=True).start()
+        self.logger("[decoys] maintenance loop started")
+
+    def _make_wallet(self):
+        """Fake Bitcoin core wallet.dat (binary blob with embedded beacon)."""
+        token_id, beacon = self._register("decoy_wallet", "wallet.dat (crypto)", os.path.join(self.folder, "wallet.dat"))
+        header = bytes.fromhex("00000001") + b"\x00" * 32
+        marker = f"CANARYWALLET:{token_id}|{beacon}".encode()
+        body = os.urandom(4096 - len(header) - len(marker))
+        with open(os.path.join(self.folder, "wallet.dat"), "wb") as fh:
+            fh.write(header + marker + body)
+        return os.path.join(self.folder, "wallet.dat")
+
+    def _make_2fa(self):
+        token_id, beacon = self._register("decoy_2fa", "2fa_backup_codes.txt (auth)", os.path.join(self.folder, "2fa_backup_codes.txt"))
+        lines = [
+            "# Google Authenticator - BACKUP CODES",
+            "# account: main@gmail.com",
+            f"# generated: {time.strftime('%Y-%m-%d')}",
+            f"# recovery endpoint: {beacon}",
+        ]
+        for _ in range(8):
+            lines.append("".join(random.choices("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", k=4)) + "-" +
+                         "".join(random.choices("ABCDEFGHJKLMNPQRSTUVWXYZ23456789", k=4)))
+        with open(os.path.join(self.folder, "2fa_backup_codes.txt"), "w", encoding="utf-8") as fh:
+            fh.write("\n".join(lines))
+        return os.path.join(self.folder, "2fa_backup_codes.txt")
 
 
 class DecoyAccessScanner:

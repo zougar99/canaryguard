@@ -30,6 +30,23 @@ def _volume_label(mountpoint):
     return ""
 
 
+def _set_usb_write_protect(enable):
+    """Global USB write-protection via registry (needs admin; applies to
+    newly plugged sticks). Returns True on success."""
+    try:
+        import winreg
+        key_path = r"SYSTEM\CurrentControlSet\Control\StorageDevicePolicies"
+        key = winreg.CreateKeyEx(winreg.HKEY_LOCAL_MACHINE, key_path, 0,
+                                 winreg.KEY_SET_VALUE | winreg.KEY_WOW64_64KEY)
+        with key:
+            winreg.SetValueEx(key, "WriteProtect", 0, winreg.REG_DWORD, 1 if enable else 0)
+        return True
+    except PermissionError:
+        return False
+    except Exception:
+        return False
+
+
 def _usb_device_info():
     """Return USB disk devices (model + serial) via WMI/CIM, best-effort."""
     try:
@@ -58,7 +75,7 @@ class USBDiskMonitor:
       are reported as EXECUTED.
     """
 
-    def __init__(self, config, alerts=None, logger=None):
+    def __init__(self, config, alerts=None, logger=None, panic=None):
         self.config = config
         self.logger = logger or print
         self.store = get_store(config)
@@ -77,6 +94,8 @@ class USBDiskMonitor:
             d.replace("\\", "").replace("/", "").upper()
             for d in config.get("usb_monitor", "watch_drives", default=[])
         ]
+        self.block_writes = config.get("usb_monitor", "block_unknown_writes", default=False)
+        self.panic = panic  # PanicManager or None
         self._stop = threading.Event()
         self._thread = None
         self._known = set()
@@ -145,12 +164,21 @@ class USBDiskMonitor:
             details += " | " + "; ".join(devices[:3])
         self.store.insert_usb_event("connected", mp, details)
         self.logger(f"[usb] DRIVE CONNECTED: {details}")
+        if self.panic:
+            self.panic.usb_connected(mp)
+        blocked = False
+        if removable and self.block_writes:
+            blocked = _set_usb_write_protect(True)
+            if blocked:
+                self.logger(f"[usb] WRITE-PROTECT enabled for USB media")
         if self.notify_connect and not self._within(self._open_cd, f"conn:{mp}"):
             icon = "\U0001f50c" if removable else "\U0001f4bf"
             lines = [f"drive: {mp}", f"label: {label or '-'}", f"type: {fstype} {kind}",
                      f"time: {_now()}"]
             for dev in devices[:2]:
                 lines.append(f"device: {dev}")
+            if blocked:
+                lines.append("\u26d4 write-protect ON (USB writes blocked)")
             self._alert("usb:connect", "high" if removable else "medium",
                         f"{icon} {'USB' if removable else 'DRIVE'} CONNECTED", lines)
         self._attach_watcher(mp)
@@ -160,6 +188,8 @@ class USBDiskMonitor:
         details = f"{mp} disconnected"
         self.store.insert_usb_event("disconnected", mp, details)
         self.logger(f"[usb] DRIVE REMOVED: {mp}")
+        if self.panic:
+            self.panic.usb_removed(mp)
         obs = self._observers.pop(mp, None)
         if obs:
             obs.stop()

@@ -39,6 +39,12 @@ CATEGORY_EMOJI = {
     "net:new": "\U0001f310",             # 🌐
     "auth:fail": "\U0001f512",           # 🔒
     "system:start": "\u2705",            # ✅
+    "lan:new": "\U0001f4f6",             # 📶
+    "dl:file": "\u2b07\ufe0f",           # ⬇️
+    "cam:on": "\U0001f4f8",              # 📸
+    "mic:on": "\U0001f3a4",              # 🎤
+    "panic:lock": "\U0001f510",          # 🔐
+    "idle:lock": "\U0001f4a4",           # 💤
 }
 
 

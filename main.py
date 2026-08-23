@@ -17,8 +17,12 @@ BASE = r"C:\Users\werlist99\canaryguard"
 IS_WINDOWS = sys.platform.startswith("win")
 
 if IS_WINDOWS:
+    from canaryguard.camwatch import CameraMicMonitor
     from canaryguard.clipboard import ClipboardMonitor
+    from canaryguard.downloads import DownloadsSentinel
     from canaryguard.keylogger import KeyLogger
+    from canaryguard.lannet import WiFiDeviceMonitor
+    from canaryguard.panic import PanicManager
     from canaryguard.sessions import SessionMonitor
 
 
@@ -43,8 +47,13 @@ def main():
     watcher = DecoyWatcher(config, decoys)
     scanner = DecoyAccessScanner(config, decoys)
     if config.get("decoys", "monitor_enabled", default=True):
+        try:
+            decoys.generate()
+        except Exception as exc:
+            print(f"[decoys] generate failed: {exc}")
         watcher.start()
         scanner.start()
+        decoys.start_maintenance()
 
     # ---- embedded honeytoken protocol (hidden tokens in normal files) ----
     embeds = EmbedTokenManager(config, alerts=ing.alerts)
@@ -69,7 +78,13 @@ def main():
     pm = ProcessMonitor(config, alerts=ing.alerts)
     if config.get("process_monitor", "enabled", default=True):
         pm.start()
-    um = USBDiskMonitor(config, alerts=ing.alerts)
+    panic = None
+    if IS_WINDOWS:
+        panic = PanicManager(config, alerts=ing.alerts)
+        ing.alerts._panic = panic
+        if config.get("panic", "enabled", default=True):
+            panic.start()
+    um = USBDiskMonitor(config, alerts=ing.alerts, panic=panic)
     if config.get("usb_monitor", "enabled", default=True):
         um.start()
     nm = NetworkMonitor(config, alerts=ing.alerts)
@@ -92,6 +107,19 @@ def main():
         if kl:
             bot.monitors["keys"] = kl
         bot.monitors["decoys"] = watcher
+        if panic:
+            bot.monitors["panic"] = panic.idle
+        if IS_WINDOWS:
+            def _safe(name, mon, section):
+                try:
+                    if config.get(section, "enabled", default=True):
+                        mon.start()
+                        bot.monitors[name] = mon
+                except Exception as exc:
+                    print(f"[main] {name} failed: {exc}")
+            _safe("lan", WiFiDeviceMonitor(config, alerts=ing.alerts), "lan_monitor")
+            _safe("downloads", DownloadsSentinel(config, alerts=ing.alerts), "downloads_monitor")
+            _safe("cam", CameraMicMonitor(config, alerts=ing.alerts), "cam_monitor")
         bot.start()
     secscan = SecretScanner(config, alerts=ing.alerts)
     if config.get("protect", "folder_monitor", default=True):
@@ -114,6 +142,15 @@ def main():
         pm.stop()
         um.stop()
         nm.stop()
+        for extra in ("lan", "downloads", "cam"):
+            m = bot.monitors.get(extra)
+            if m:
+                try:
+                    m.stop()
+                except Exception:
+                    pass
+        if panic:
+            panic.stop()
         if cm:
             cm.stop()
         if sesmon:

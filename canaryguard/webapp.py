@@ -64,6 +64,14 @@ class DashboardServer:
             )
         except Exception as exc:
             self.logger(f"[webapp] login-fail alert error: {exc}")
+        # brute-force panic lockout
+        try:
+            from .panic import PanicManager
+            pm = getattr(self.alerts, "_panic", None)
+            if pm:
+                pm.register_login_fail()
+        except Exception:
+            pass
 
     def _register_routes(self):
         app = self.app

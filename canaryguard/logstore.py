@@ -166,6 +166,15 @@ CREATE TABLE IF NOT EXISTS held_alerts (
     subject TEXT,
     extra TEXT
 );
+
+CREATE TABLE IF NOT EXISTS cam_events (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    kind TEXT,
+    app TEXT,
+    details TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cam_events_ts ON cam_events (ts);
 """
 
 
@@ -558,6 +567,28 @@ class LogStore:
                 self._conn.execute("DELETE FROM held_alerts")
                 self._conn.commit()
             return [dict(r) for r in rows]
+
+    # ---- camera/mic/panic ----
+
+    def insert_cam_event(self, kind, app, details=""):
+        with self._lock:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur = self._conn.execute(
+                "INSERT INTO cam_events (ts, kind, app, details) VALUES (?,?,?,?)",
+                (ts, kind, app, details),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def recent_cam_events(self, limit=100):
+        with self._lock:
+            rows = self._conn.execute("SELECT * FROM cam_events ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+            return [dict(r) for r in rows]
+
+    def total_cam_events(self):
+        with self._lock:
+            row = self._conn.execute("SELECT COUNT(*) AS n FROM cam_events").fetchone()
+            return row["n"]
 
     def close(self):
         with self._lock:
