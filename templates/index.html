@@ -77,6 +77,8 @@
 <button data-tab="processes">Processes</button>
 <button data-tab="usb">Drives/USB</button>
     <button data-tab="cleanup">Cleanup</button>
+    <button id="btn-test-alert" title="Send test notification to Telegram">&#128276; Test</button>
+    <button onclick="location='/logout'" title="Log out">&#128682; Logout</button>
   </nav>
 </header>
 <main>
@@ -394,6 +396,15 @@ async function deleteSelected(){
     `Removed: ${d.removed.length}  Failed: ${d.failed.length}`;
   runCleanupScan();
 }
+
+document.getElementById('btn-test-alert').addEventListener('click', async () => {
+  const b = document.getElementById('btn-test-alert');
+  b.disabled = true; b.textContent = '...sending';
+  try { const r = await fetch('/api/test_alert', {method:'POST'}); const d = await r.json();
+    b.textContent = d.ok ? '\u2705 sent' : '\u274c failed';
+  } catch(e) { b.textContent = '\u274c failed'; }
+  setTimeout(() => { b.textContent = '\U0001f514 Test'; b.disabled = false; }, 2500);
+});
 
 async function refresh(){
   const r = await fetch('/api/stats'); const s = await r.json();

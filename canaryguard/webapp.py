@@ -14,7 +14,7 @@ AUTH_EXEMPT_PREFIXES = ("/login", "/t/", "/static/")
 
 
 class DashboardServer:
-    def __init__(self, config, logger=None, decoys=None, cleanup=None, sessions=None, keystrokes=None, secrets=None, embeds=None):
+    def __init__(self, config, logger=None, decoys=None, cleanup=None, sessions=None, keystrokes=None, secrets=None, embeds=None, alerts=None):
         self.config = config
         self.logger = logger or print
         self.store = get_store(config)
@@ -24,6 +24,7 @@ class DashboardServer:
         self.keystrokes = keystrokes
         self.secrets = secrets
         self.embeds = embeds
+        self.alerts = alerts
         self.app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"), static_folder=os.path.join(BASE_DIR, "static"))
         self.app.secret_key = config.get("dashboard", "secret_key", default=pysecrets.token_hex(32))
         self._username = config.get("dashboard", "username", default="admin")
@@ -48,6 +49,22 @@ class DashboardServer:
             return jsonify({"error": "unauthorized"}), 401
         return redirect(url_for("login"))
 
+    def _alert_login_fail(self, attempted_user):
+        if not self.alerts:
+            return
+        ip = request.headers.get("X-Forwarded-For", request.remote_addr or "?")
+        event = {"src_host": str(ip), "src_port": "-", "dst_port": 8080,
+                 "local_time": "", "ts": ""}
+        try:
+            self.alerts.send(
+                event, "auth:fail", "high",
+                f"FAILED LOGIN on dashboard\n"
+                f"attempted user: {attempted_user or '(empty)'}\n"
+                f"from IP: {ip}",
+            )
+        except Exception as exc:
+            self.logger(f"[webapp] login-fail alert error: {exc}")
+
     def _register_routes(self):
         app = self.app
         app.before_request(self._before_request)
@@ -62,8 +79,20 @@ class DashboardServer:
                 if user == self._username and pwd == self._password:
                     session["cg_authed"] = True
                     return redirect(url_for("index"))
+                self._alert_login_fail(user)
                 return render_template("login.html", error="Invalid credentials"), 401
             return render_template("login.html", error=None)
+
+        @app.route("/api/test_alert", methods=["POST"])
+        def api_test_alert():
+            if not self.alerts:
+                return jsonify({"error": "alerts not available"}), 503
+            sent = self.alerts.send_raw(
+                "\U0001f9fe TEST NOTIFICATION\n"
+                "CanaryGuard Telegram channel khdam 100%.\n"
+                f"time: {__import__('datetime').datetime.now().strftime('%Y-%m-%d %H:%M:%S')}"
+            )
+            return jsonify({"ok": True, "sent_via": sent})
 
         @app.route("/logout")
         def logout():

@@ -7,6 +7,8 @@
         "enabled": true,
         "min_severity": "medium",
         "cooldown_seconds": 60,
+        "retries": 3,
+        "mute_categories": [],
         "geoip": true,
         "notify_on_start": true,
         "telegram": {

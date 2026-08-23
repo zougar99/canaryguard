@@ -1,6 +1,9 @@
+import html
+import platform
 import smtplib
 import ssl
 import threading
+import time
 from email.mime.text import MIMEText
 
 import requests
@@ -34,6 +37,8 @@ CATEGORY_EMOJI = {
     "clip:found": "\U0001f511",          # 🔑
     "clip:change": "\U0001f4cb",         # 📋
     "net:new": "\U0001f310",             # 🌐
+    "auth:fail": "\U0001f512",           # 🔒
+    "system:start": "\u2705",            # ✅
 }
 
 
@@ -46,7 +51,10 @@ class AlertManager:
         self.enabled = cfg.get("enabled", True)
         self.min_sev = cfg.get("min_severity", "medium")
         self.cooldown = cfg.get("cooldown_seconds", 60)
+        self.retries = int(cfg.get("retries", 3))
         self.geoip_enabled = cfg.get("geoip", True)
+        self.muted = {c.lower() for c in (cfg.get("mute_categories", None) or [])}
+        self.host = platform.node() or "PC"
         self.telegram = cfg.get("telegram", {})
         self.discord = cfg.get("discord", {})
         self.slack = cfg.get("slack", {})
@@ -55,8 +63,6 @@ class AlertManager:
         self._last_sent = {}  # (channel, subject) -> ts
 
     def _within_cooldown(self, key):
-        import time
-
         now = time.monotonic()
         last = self._last_sent.get(key, 0)
         return (now - last) < self.cooldown
@@ -64,25 +70,35 @@ class AlertManager:
     def send(self, event, category, severity, extra=""):
         if not self.enabled:
             return
+        if category.lower() in self.muted:
+            return
         if SEVERITY_ORDER.get(severity, 0) < SEVERITY_ORDER.get(self.min_sev, 2):
             return
 
         src = event.get("src_host") or event.get("src_ip") or ""
-        src = src if src not in ("", "-", "127.0.0.1", "::1", "local") else "LOCAL PC"
+        src = src if src not in ("", "-", "127.0.0.1", "::1", "local") else f"{self.host} (LOCAL)"
         dst_port = event.get("dst_port", "-")
+        when = event.get("local_time") or event.get("ts") or time.strftime("%Y-%m-%d %H:%M:%S")
+
         sev_emoji = SEVERITY_EMOJI.get(severity, "\U0001f534")
         cat_emoji = CATEGORY_EMOJI.get(category, "\U0001f4a1")
-        lines = [
-            f"{sev_emoji} {cat_emoji} *{category.upper()}* {sev_emoji}",
-            f"\U0001f511 Severity: {severity}",
-            f"\U0001f310 Source: `{src}`:{event.get('src_port', '-')}",
-            f"\U0001f3e2 Target port: {dst_port}",
-            f"\U0001f4c5 Time: {event.get('local_time', event.get('ts', ''))}",
-        ]
-        if extra:
-            lines.append("")
-            lines.append(extra)
-        msg = "\n".join(lines)
+        bar = "\u2500" * 22
+
+        # HTML mode: safe against _ * [ etc. in dynamic content
+        e_extra = html.escape(extra) if extra else ""
+        e_src = html.escape(str(src))
+        msg = (
+            f"<b>{sev_emoji} {cat_emoji} {html.escape(category.upper())}</b> "
+            f"<i>({severity})</i>\n"
+            f"<code>{bar}</code>\n"
+            f"\U0001f4bb Host: <b>{html.escape(self.host)}</b>\n"
+            f"\U0001f310 Source: <code>{e_src}:{event.get('src_port', '-')}</code>\n"
+            f"\U0001f3e2 Target port: <code>{dst_port}</code>\n"
+            f"\U0001f4c5 Time: {when}"
+        )
+        if e_extra:
+            msg += f"\n<code>{bar}</code>\n{e_extra}"
+
         subject = f"OpenCanary [{severity}] {category} from {src}"
         self._dispatch(subject, msg, severity, event)
 
@@ -101,21 +117,42 @@ class AlertManager:
             key = (name, subject)
             if self._within_cooldown(key):
                 continue
-            self._last_sent[key] = __import__("time").monotonic()
-            try:
-                fn(subject, msg)
+            self._last_sent[key] = time.monotonic()
+            sent = False
+            for attempt in range(1, self.retries + 1):
+                try:
+                    fn(subject, msg)
+                    sent = True
+                    break
+                except Exception as exc:
+                    self.logger(f"[alerts] {name} attempt {attempt}/{self.retries} failed: {exc}")
+                    time.sleep(min(2 * attempt, 5))
+            if sent:
                 self.store.insert_alert(name, subject, event.get("_id"))
                 self.logger(f"[alerts] sent {name} alert: {subject}")
-            except Exception as exc:
-                self.logger(f"[alerts] {name} failed: {exc}")
+            else:
+                self.logger(f"[alerts] {name} DROPPED after {self.retries} attempts: {subject}")
+
+    def send_raw(self, text):
+        """Direct passthrough message (used by dashboard test button)."""
+        ok = []
+        if self.telegram.get("enabled") and self.telegram.get("bot_token"):
+            url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendMessage"
+            requests.post(url, json={
+                "chat_id": self.telegram["chat_id"],
+                "text": text, "parse_mode": "HTML",
+            }, timeout=10)
+            ok.append("telegram")
+        return ok
 
     def _send_telegram(self, subject, msg):
         url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendMessage"
-        requests.post(
+        r = requests.post(
             url,
-            json={"chat_id": self.telegram["chat_id"], "text": msg, "parse_mode": "Markdown"},
+            json={"chat_id": self.telegram["chat_id"], "text": msg, "parse_mode": "HTML"},
             timeout=10,
         )
+        r.raise_for_status()
 
     def _send_discord(self, subject, msg):
         requests.post(self.discord["webhook_url"], json={"content": f"**{subject}**\n```\n{msg}\n```"}, timeout=10)
