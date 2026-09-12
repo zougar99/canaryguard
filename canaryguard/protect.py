@@ -25,12 +25,13 @@ class FolderWatchdog:
     or Startup folder changes).
     """
 
-    def __init__(self, config, alerts=None, logger=None, secrets=None):
+    def __init__(self, config, alerts=None, logger=None, secrets=None, ransomware=None):
         self.config = config
         self.logger = logger or print
         self.store = get_store(config)
         self.alerts = alerts
         self.secrets = secrets
+        self.ransomware = ransomware
         self.folders = config.get("protect", "folders", default=DEFAULT_FOLDERS)
         self._observer = None
 
@@ -52,6 +53,13 @@ class FolderWatchdog:
         details = f"{event_type}: {path}"
         self.store.insert_file_event(folder, path, event_type, details)
         self.logger(f"[protect] {event_type}: {path}")
+
+        # feed ransomware tripwire on every create/modify
+        if self.ransomware and event_type in ("created", "modified") and not event.is_directory:
+            try:
+                self.ransomware.record(folder, path)
+            except Exception:
+                pass
 
         # Scan file content for tokens/keys/passwords
         if self.secrets and event_type in ("created", "modified") and os.path.isfile(path):

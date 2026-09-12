@@ -2,6 +2,8 @@
 config.json
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 session_state.json
 *.log
 guard.out.log

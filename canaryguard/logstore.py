@@ -178,13 +178,30 @@ CREATE INDEX IF NOT EXISTS idx_cam_events_ts ON cam_events (ts);
 """
 
 
+_STORE_CACHE: dict = {}
+_STORE_CACHE_LOCK = threading.Lock()
+
+
+def get_logstore(db_file):
+    """Return a shared LogStore per db_file (single connection, WAL mode)."""
+    key = os.path.abspath(db_file)
+    with _STORE_CACHE_LOCK:
+        if key not in _STORE_CACHE:
+            _STORE_CACHE[key] = LogStore(key)
+        return _STORE_CACHE[key]
+
+
 class LogStore:
     def __init__(self, db_file):
         self.db_file = db_file
         os.makedirs(os.path.dirname(db_file), exist_ok=True)
         self._lock = threading.Lock()
-        self._conn = sqlite3.connect(db_file, check_same_thread=False)
+        self._conn = sqlite3.connect(db_file, check_same_thread=False,
+                                     timeout=10)
         self._conn.row_factory = sqlite3.Row
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=10000")
+        self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.executescript(SCHEMA)
         self._migrate()
         self._conn.commit()

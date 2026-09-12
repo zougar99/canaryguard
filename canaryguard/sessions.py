@@ -162,6 +162,8 @@ class SessionMonitor:
         }
         self.store.insert_session(username, logon_type, src_ip, status, details, raw)
         self.logger(f"[sessions] {subject} src={src_ip or 'local'} ({ltype_name})")
+        if status == "failed" and src_ip and hasattr(self, 'ipblock') and self.ipblock:
+            self.ipblock.register_fail(src_ip)
 
         if self.alerts and severity in ("high", "medium"):
             msg = (

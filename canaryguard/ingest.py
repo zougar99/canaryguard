@@ -14,7 +14,7 @@ STATE_FILE = "C:\\Users\\werlist99\\canaryguard\\canaryguard\\ingest_state.json"
 
 
 class Ingestor:
-    def __init__(self, config, logger=None):
+    def __init__(self, config, logger=None, ipblock=None):
         self.config = config
         self.logger = logger or print
         self.store = get_store(config)
@@ -24,12 +24,15 @@ class Ingestor:
         self.log_file = config.get("opencanary", "log_file")
         self.geo = GeoLocator(config, enabled=config.section("alerts").get("geoip", True))
         self.alerts = AlertManager(config, logger=logger)
+        self.ipblock = ipblock
         self.siem = SIEMForwarder(config, logger=logger)
         self.honeytokens = HoneytokenManager(config, self.alerts, self.geo, logger=logger)
         self.profiler = AttackProfiler()
         self._offset = None
         self._stop = threading.Event()
         self._load_state()
+
+    _FAIL_CATEGORIES = {"brute_force", "web_login_attack", "database_attack", "auth:fail", "shell_command"}
 
     def _load_state(self):
         try:
@@ -124,6 +127,13 @@ class Ingestor:
 
         if creds:
             self.store.insert_cred(src, creds.get("username"), creds.get("password"), creds.get("service"), event_id)
+
+        # auto-block attackers hitting failed-auth categories
+        if self.ipblock and src and category in self._FAIL_CATEGORIES:
+            try:
+                self.ipblock.register_fail(src)
+            except Exception as exc:
+                self.logger(f"[ingest] ipblock error: {exc}")
 
         geo = self.geo.lookup(src) if src else {}
         loc = ", ".join(x for x in (geo.get("city"), geo.get("country")) if x)

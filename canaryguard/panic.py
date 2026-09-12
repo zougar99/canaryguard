@@ -20,8 +20,10 @@ class IdleLocker:
         self.config = config
         self.logger = logger or print
         self.alerts = alerts
-        self.timeout_min = float(config.get("panic", "idle_lock_minutes", default=15))
-        self.notify = config.get("panic", "notify_idle_lock", default=False)
+        cfg = config.section("panic")
+        self.enabled = cfg.get("idle_lock_enabled", True)
+        self.timeout_min = float(cfg.get("idle_lock_minutes", 15))
+        self.notify = cfg.get("notify_idle_lock", False)
         self._stop = threading.Event()
 
     @staticmethod
@@ -53,6 +55,9 @@ class IdleLocker:
                 self.logger(f"[idle] error: {exc}")
 
     def start(self):
+        if not self.enabled:
+            self.logger("[idle] idle auto-lock disabled")
+            return
         threading.Thread(target=self._run, daemon=True).start()
         self.logger(f"[idle] auto-lock after {self.timeout_min} min idle")
 

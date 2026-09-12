@@ -2,7 +2,7 @@ import json
 import os
 import threading
 
-from .logstore import LogStore
+from .logstore import LogStore, get_logstore
 
 
 class Config:
@@ -24,6 +24,7 @@ class Config:
     def __init__(self, data, path):
         self.data = data
         self.path = path
+        self._base_dir = os.path.dirname(os.path.abspath(path))
 
     def get(self, *keys, default=None):
         node = self.data
@@ -40,4 +41,4 @@ class Config:
 
 def get_store(config: Config) -> LogStore:
     db_file = config.get("opencanary", "db_file")
-    return LogStore(db_file)
+    return get_logstore(db_file)

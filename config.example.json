@@ -143,5 +143,53 @@
         "extra_patterns": [],
         "embed_enabled": true,
         "embed_folder": "/opt/canaryguard/CanaryDecoys/embedded"
+    },
+    "ransomware_monitor": {
+        "enabled": true
+    },
+    "ransomware": {
+        "threshold": 40,
+        "window_seconds": 60,
+        "kill_network": false,
+        "network_adapter": "eth0"
+    },
+    "staging_monitor": {
+        "enabled": true
+    },
+    "staging": {
+        "min_size_mb": 10,
+        "folders": ["Documents", "Downloads", "Desktop"]
+    },
+    "browser_monitor": {
+        "enabled": true
+    },
+    "browser": {
+        "poll_seconds": 5
+    },
+    "persist_monitor": {
+        "enabled": true
+    },
+    "persist": {
+        "poll_seconds": 60
+    },
+    "theft_monitor": {
+        "enabled": true
+    },
+    "theft": {
+        "poll_seconds": 2,
+        "idle_before": 120
+    },
+    "evidence_monitor": {
+        "enabled": true
+    },
+    "evidence": {
+        "time": "02:00",
+        "max_mb": 10
+    },
+    "ipblock": {
+        "enabled": true,
+        "max_fails": 5,
+        "window_seconds": 300,
+        "block_minutes": 60
     }
 }

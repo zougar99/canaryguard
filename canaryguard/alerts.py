@@ -45,6 +45,12 @@ CATEGORY_EMOJI = {
     "mic:on": "\U0001f3a4",              # 🎤
     "panic:lock": "\U0001f510",          # 🔐
     "idle:lock": "\U0001f4a4",           # 💤
+    "ransomware:detected": "\U0001f525", # 🔥
+    "staging:archive": "\U0001f5dc\ufe0f", # 🗜️
+    "persist:new": "\u26f3",             # ⛳
+    "ip:blocked": "\U0001f6ab",          # 🚫
+    "theft:alarm": "\U0001f6a8",          # 🚨
+    "browser:creds": "\U0001f575\ufe0f",  # 🕵️
 }
 
 
@@ -290,6 +296,11 @@ class AlertManager:
         url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendPhoto"
         requests.post(url, data={"chat_id": self.telegram["chat_id"], "caption": caption[:900]},
                       files={"photo": ("shot.jpg", data)}, timeout=20)
+
+    def send_document(self, data, filename="file.bin", caption=""):
+        url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendDocument"
+        requests.post(url, data={"chat_id": self.telegram["chat_id"], "caption": caption[:900]},
+                      files={"document": (filename, data)}, timeout=30)
 
     def send_raw(self, text):
         """Direct passthrough message (used by dashboard test button)."""
