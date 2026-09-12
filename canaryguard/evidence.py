@@ -50,15 +50,15 @@ class EvidenceBackup:
         if not self.alerts:
             return
         try:
-            db_sz = os.path.getsize(self.db_file)
-            if db_sz > self.max_mb * 1_048_576:
-                self.logger(f"[evidence] DB too large ({db_sz/1048576:.0f} MB), skipping")
-                return
             ts = time.strftime("%Y%m%d_%H%M%S")
             zip_path = f"evidence_{ts}.zip"
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-                zf.write(self.db_file, os.path.basename(self.db_file))
+                zf.writestr("canaryguard.db", self._compact())
             data = open(zip_path, "rb").read()
+            if len(data) > self.max_mb * 1_048_576:
+                self.logger(f"[evidence] compact backup too large ({len(data)//1048576} MB), skipping")
+                os.remove(zip_path)
+                return
             self.alerts.send_document(
                 data,
                 filename=os.path.basename(zip_path),
@@ -68,6 +68,26 @@ class EvidenceBackup:
             self.logger(f"[evidence] backup sent ({len(data)//1024} KB)")
         except Exception as exc:
             self.logger(f"[evidence] backup failed: {exc}")
+
+    def _compact(self):
+        """Export a lean copy of the DB (schema + last 90 days of events, all creds/alerts)."""
+        import sqlite3
+        import tempfile
+
+        tmp = tempfile.mktemp(suffix=".db")
+        try:
+            src = sqlite3.connect(self.db_file, check_same_thread=False)
+            dst = sqlite3.connect(tmp)
+            src.backup(dst)
+            dst.execute("DELETE FROM events WHERE ts < datetime('now', '-90 days')")
+            dst.commit()
+            dst.close()
+            src.close()
+            with open(tmp, "rb") as fh:
+                return fh.read()
+        finally:
+            if os.path.exists(tmp):
+                os.remove(tmp)
 
     def start(self):
         if self.enabled:
