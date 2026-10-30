@@ -14,7 +14,7 @@ AUTH_EXEMPT_PREFIXES = ("/login", "/t/", "/static/")
 
 
 class DashboardServer:
-    def __init__(self, config, logger=None, decoys=None, cleanup=None, sessions=None, keystrokes=None, secrets=None, embeds=None, alerts=None):
+    def __init__(self, config, logger=None, decoys=None, cleanup=None, sessions=None, keystrokes=None, secrets=None, embeds=None, alerts=None, monitors=None, ipblock=None):
         self.config = config
         self.logger = logger or print
         self.store = get_store(config)
@@ -25,6 +25,8 @@ class DashboardServer:
         self.secrets = secrets
         self.embeds = embeds
         self.alerts = alerts
+        self.monitors = monitors or {}
+        self.ipblock = ipblock
         self.app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"), static_folder=os.path.join(BASE_DIR, "static"))
         self.app.secret_key = config.get("dashboard", "secret_key", default=pysecrets.token_hex(32))
         self._username = config.get("dashboard", "username", default="admin")
@@ -236,6 +238,203 @@ class DashboardServer:
             paths = body.get("paths", [])
             removed, failed = self.cleanup.delete(paths)
             return jsonify({"removed": removed, "failed": failed})
+
+        # ---- desktop app control endpoints ----
+
+        @app.route("/api/monitors")
+        def api_monitors():
+            out = {}
+            for name, mon in self.monitors.items():
+                out[name] = {
+                    "status": self._mon_status(mon),
+                    "class": type(mon).__name__,
+                }
+            return jsonify({"monitors": out, "ipblock_enabled": bool(self.ipblock and self.ipblock.enabled)})
+
+        @app.route("/api/monitors/<name>", methods=["POST"])
+        def api_monitor_toggle(name):
+            body = request.get_json(silent=True) or {}
+            enabled = bool(body.get("enabled", True))
+            if name not in self.monitors:
+                return jsonify({"error": "unknown monitor"}), 404
+            mon = self.monitors[name]
+            try:
+                if enabled:
+                    stop_flag = getattr(mon, "_stop", None)
+                    if stop_flag is not None:
+                        stop_flag.clear()
+                    mon.start()
+                else:
+                    mon.stop()
+            except Exception as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+            ok = self._persist_config(f"{name}_monitor", {"enabled": enabled})
+            return jsonify({"ok": True, "name": name, "enabled": enabled, "saved": ok})
+
+        @app.route("/api/lock", methods=["POST"])
+        def api_lock():
+            try:
+                from .panic import lock_workstation
+                lock_workstation()
+                return jsonify({"ok": True, "locked": True})
+            except Exception as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+
+        @app.route("/api/panic", methods=["POST"])
+        def api_panic():
+            try:
+                if self.alerts:
+                    event = {"src_host": "local", "src_port": "-", "dst_port": "-",
+                             "local_time": "", "ts": ""}
+                    from datetime import datetime
+                    self.alerts.send(
+                        event, "panic:lock", "critical",
+                        f"\U0001f6a8 PANIC LOCK triggered from desktop app\n"
+                        f"time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}",
+                    )
+                from .panic import lock_workstation
+                lock_workstation()
+                return jsonify({"ok": True})
+            except Exception as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+
+        @app.route("/api/mute_status")
+        def api_mute_status():
+            muted = sorted(str(m) for m in getattr(self.alerts, "muted", set())) if self.alerts else []
+            return jsonify({"muted": muted})
+
+        @app.route("/api/mute", methods=["POST"])
+        def api_mute():
+            if not self.alerts:
+                return jsonify({"error": "alerts not available"}), 503
+            body = request.get_json(silent=True) or {}
+            cat = (body.get("category") or "").strip().lower()
+            if not cat:
+                return jsonify({"error": "category required"}), 400
+            self.alerts.muted.add(cat)
+            self._persist_alerts_mute()
+            return jsonify({"ok": True, "muted": sorted(self.alerts.muted)})
+
+        @app.route("/api/unmute", methods=["POST"])
+        def api_unmute():
+            if not self.alerts:
+                return jsonify({"error": "alerts not available"}), 503
+            body = request.get_json(silent=True) or {}
+            cat = (body.get("category") or "").strip().lower()
+            if body.get("all"):
+                self.alerts.muted.clear()
+            elif cat:
+                self.alerts.muted.discard(cat)
+            self._persist_alerts_mute()
+            return jsonify({"ok": True, "muted": sorted(self.alerts.muted)})
+
+        @app.route("/api/digest", methods=["POST"])
+        def api_digest():
+            if not self.alerts:
+                return jsonify({"error": "alerts not available"}), 503
+            try:
+                self.alerts.send_digest()
+                return jsonify({"ok": True})
+            except Exception as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+
+        @app.route("/api/screenshot")
+        def api_screenshot():
+            if not self.alerts:
+                return jsonify({"error": "alerts not available"}), 503
+            try:
+                shot = self.alerts._grab_screenshot()
+                if not shot:
+                    return jsonify({"error": "screenshot failed"}), 500
+                return app.response_class(shot, mimetype="image/jpeg")
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/ipblock/blocked")
+        def api_ipblock_blocked():
+            try:
+                import subprocess
+                out = subprocess.run(
+                    ["netsh", "advfirewall", "firewall", "show", "rule", "name=all"],
+                    capture_output=True, text=True, timeout=15,
+                ).stdout
+                ips = []
+                for chunk in out.split("Rule Name:"):
+                    lines = [ln.strip() for ln in chunk.splitlines() if ln.strip()]
+                    if not lines:
+                        continue
+                    if lines[0].startswith("CanaryBlock"):
+                        for line in lines:
+                            if line.upper().startswith("REMOTEIP"):
+                                for ip in line.split(":", 1)[1].replace("/", " ").split():
+                                    if ipReplace := ip.split("/")[0]:
+                                        if "." in ipReplace:
+                                            ips.append(ipReplace)
+                return jsonify({"blocked": sorted(set(ips))})
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/ipblock/block", methods=["POST"])
+        def api_ipblock_block():
+            if not self.ipblock:
+                return jsonify({"error": "ipblocker not available"}), 503
+            body = request.get_json(silent=True) or {}
+            ip = (body.get("ip") or "").strip()
+            if not ip:
+                return jsonify({"error": "ip required"}), 400
+            self.ipblock._block(ip, body.get("fails", 99))
+            return jsonify({"ok": True, "ip": ip})
+
+        @app.route("/api/ipblock/remove", methods=["POST"])
+        def api_ipblock_remove():
+            if not self.ipblock:
+                return jsonify({"error": "ipblocker not available"}), 503
+            body = request.get_json(silent=True) or {}
+            ip = (body.get("ip") or "").strip()
+            if not ip:
+                return jsonify({"error": "ip required"}), 400
+            rule = f'CanaryBlock_{ip.replace(".", "_")}'
+            import os as _os
+            r = _os.system(f'netsh advfirewall firewall delete rule name="{rule}"')
+            self.ipblock._blocked.pop(ip, None)
+            return jsonify({"ok": True, "ip": ip, "removed": r == 0})
+
+    # ---- helpers ----
+
+    def _mon_status(self, mon):
+        try:
+            if mon is None:
+                return "missing"
+            stop_flag = getattr(mon, "_stop", None)
+            if stop_flag is not None and stop_flag.is_set():
+                return "stopped"
+            thr = getattr(mon, "_thread", None)
+            if thr is not None:
+                return "running" if thr.is_alive() else "dead"
+            obs = getattr(mon, "_obs", None)
+            if obs is not None:
+                return "running" if obs.is_alive() else "dead"
+            return "running"
+        except Exception:
+            return "unknown"
+
+    def _persist_config(self, section, data):
+        """Persist a small change into config.json (section.enabled etc.)."""
+        try:
+            with open(self.config.path, "r", encoding="utf-8") as fh:
+                raw = json.load(fh)
+            raw.setdefault(section, {}).update(data)
+            with open(self.config.path, "w", encoding="utf-8") as fh:
+                json.dump(raw, fh, indent=4, ensure_ascii=False)
+            self.config.data = raw
+            return True
+        except Exception as exc:
+            self.logger(f"[webapp] config persist failed: {exc}")
+            return False
+
+    def _persist_alerts_mute(self):
+        muted = sorted(str(m) for m in getattr(self.alerts, "muted", set()))
+        self._persist_config("alerts", {"mute_categories": muted})
 
     def run(self, host=None, port=None):
         host = host or self.config.get("dashboard", "host", default="127.0.0.1")

@@ -165,7 +165,7 @@ def main():
         fw.start()
 
     if config.get("dashboard", "auto_start", default=True):
-        dash = DashboardServer(config, decoys=decoys, cleanup=Cleanup(config), sessions=sesmon, keystrokes=kl, secrets=secscan, embeds=embeds, alerts=ing.alerts)
+        dash = DashboardServer(config, decoys=decoys, cleanup=Cleanup(config), sessions=sesmon, keystrokes=kl, secrets=secscan, embeds=embeds, alerts=ing.alerts, monitors=bot.monitors, ipblock=ipb)
         dash.run()
 
     print("[canaryguard] running. Ctrl+C to stop.")
