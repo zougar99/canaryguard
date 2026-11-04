@@ -33,27 +33,42 @@ class BrowserCredsWatch:
         self._stop = threading.Event()
         self._seen = set()  # (pid, filepath) already alerted
         self._cd = {}
+        self._last_probe = {}  # pid -> monotonic time of last open_files() call
 
     def _scan(self):
+        now = time.monotonic()
+        # psutil open_files() is very expensive on Windows (it walks every
+        # handle). Probe each process at most once a minute and cap the work
+        # per cycle, otherwise this single thread eats most of a CPU core.
+        budget = 12
         for proc in psutil.process_iter(["pid", "name"]):
             try:
-                name = proc.info["name"].lower()
+                pid = proc.info["pid"]
+                name = (proc.info["name"] or "").lower()
                 if name in self.BROWSER_PROCS:
                     continue
+                if now - self._last_probe.get(pid, 0.0) < 60:
+                    continue
+                if budget <= 0:
+                    break
+                budget -= 1
+                self._last_probe[pid] = now
                 for f in proc.open_files():
                     path = f.path.lower()
                     fname = os.path.basename(path)
                     if fname in _BROWSER_FILES:
-                        key = (proc.info["pid"], path)
+                        key = (pid, path)
                         if key in self._seen:
                             continue
                         self._seen.add(key)
-                        self._alert(proc.info["pid"], name, f.path)
+                        self._alert(pid, name, f.path)
             except (psutil.NoSuchProcess, psutil.AccessDenied):
                 continue
         # prune old entries to prevent memory growth
         if len(self._seen) > 2000:
             self._seen.clear()
+        if len(self._last_probe) > 5000:
+            self._last_probe.clear()
 
     def _alert(self, pid, proc_name, filepath):
         fname = os.path.basename(filepath)

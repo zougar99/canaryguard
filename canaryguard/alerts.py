@@ -83,6 +83,9 @@ class AlertManager:
         self.slack = cfg.get("slack", {})
         self.email = cfg.get("email", {})
         self._lock = threading.Lock()
+        # One pooled HTTP session: reusing TLS connections avoids a full
+        # handshake for every alert (Telegram/Discord/Slack).
+        self._http = requests.Session()
         self._last_sent = {}    # (channel, subject) -> ts
         self._suppressed = {}   # (channel, subject) -> count of cooldown-skipped sends
         self._bg_started = False
@@ -294,20 +297,20 @@ class AlertManager:
 
     def send_photo(self, data, caption=""):
         url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendPhoto"
-        requests.post(url, data={"chat_id": self.telegram["chat_id"], "caption": caption[:900]},
-                      files={"photo": ("shot.jpg", data)}, timeout=20)
+        self._http.post(url, data={"chat_id": self.telegram["chat_id"], "caption": caption[:900]},
+                        files={"photo": ("shot.jpg", data)}, timeout=20)
 
     def send_document(self, data, filename="file.bin", caption=""):
         url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendDocument"
-        requests.post(url, data={"chat_id": self.telegram["chat_id"], "caption": caption[:900]},
-                      files={"document": (filename, data)}, timeout=30)
+        self._http.post(url, data={"chat_id": self.telegram["chat_id"], "caption": caption[:900]},
+                        files={"document": (filename, data)}, timeout=30)
 
     def send_raw(self, text):
         """Direct passthrough message (used by dashboard test button)."""
         ok = []
         if self.telegram.get("enabled") and self.telegram.get("bot_token"):
             url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendMessage"
-            requests.post(url, json={
+            self._http.post(url, json={
                 "chat_id": self.telegram["chat_id"],
                 "text": text, "parse_mode": "HTML",
             }, timeout=10)
@@ -316,7 +319,7 @@ class AlertManager:
 
     def _send_telegram(self, subject, msg):
         url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendMessage"
-        r = requests.post(
+        r = self._http.post(
             url,
             json={"chat_id": self.telegram["chat_id"], "text": msg, "parse_mode": "HTML"},
             timeout=10,
@@ -324,10 +327,10 @@ class AlertManager:
         r.raise_for_status()
 
     def _send_discord(self, subject, msg):
-        requests.post(self.discord["webhook_url"], json={"content": f"**{subject}**\n```\n{msg}\n```"}, timeout=10)
+        self._http.post(self.discord["webhook_url"], json={"content": f"**{subject}**\n```\n{msg}\n```"}, timeout=10)
 
     def _send_slack(self, subject, msg):
-        requests.post(self.slack["webhook_url"], json={"text": f"*{subject}*\n```\n{msg}\n```"}, timeout=10)
+        self._http.post(self.slack["webhook_url"], json={"text": f"*{subject}*\n```\n{msg}\n```"}, timeout=10)
 
     def _send_email(self, subject, msg):
         body = MIMEText(msg, "plain", "utf-8")

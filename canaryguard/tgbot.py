@@ -39,13 +39,16 @@ class TelegramCommandBot:
         self._start = time.time()
         self._offset = 0
         self._stop = threading.Event()
+        self._session = None
 
     # ---- send helpers ----
 
-    def _api(self, method, **payload):
+    def _api(self, method, http_timeout=15, **payload):
         import requests
+        if getattr(self, "_session", None) is None:
+            self._session = requests.Session()
         url = f"https://api.telegram.org/bot{self.token}/{method}"
-        r = requests.post(url, json=payload, timeout=15)
+        r = self._session.post(url, json=payload, timeout=http_timeout)
         return r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
 
     def _reply(self, text):
@@ -166,7 +169,10 @@ class TelegramCommandBot:
         self.logger("[bot] telegram command bot polling")
         while not self._stop.is_set():
             try:
-                data = self._api("getUpdates", offset=self._offset, timeout=25)
+                # Long poll: Telegram holds the request up to 25s, so the HTTP
+                # timeout must be longer or every call times out and reconnects
+                # (each reconnect = a fresh TLS handshake).
+                data = self._api("getUpdates", http_timeout=40, offset=self._offset, timeout=25)
                 for upd in (data.get("result") or []):
                     self._offset = upd["update_id"] + 1
                     msg = upd.get("message") or upd.get("edited_message")
