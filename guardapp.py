@@ -53,6 +53,16 @@ def load_creds():
         return "", ""
 
 
+def _count_map(value):
+    """Normalize {"k": n} or [["k", n], ...] into a plain dict."""
+    if isinstance(value, dict):
+        return value
+    try:
+        return {str(k): v for k, v in value}
+    except Exception:
+        return {}
+
+
 def save_creds(user, pwd):
     try:
         os.makedirs(UI_DIR, exist_ok=True)
@@ -86,7 +96,17 @@ class GuardApp:
         try:
             fn(*args)
         except Exception:
-            pass
+            # Never let a UI callback die silently: keep a traceback on disk.
+            try:
+                import datetime
+                import traceback
+
+                os.makedirs(UI_DIR, exist_ok=True)
+                with open(os.path.join(UI_DIR, "guardapp.err.log"), "a", encoding="utf-8") as fh:
+                    fh.write(f"--- {datetime.datetime.now():%Y-%m-%d %H:%M:%S} {getattr(fn, '__name__', fn)}\n")
+                    traceback.print_exc(file=fh)
+            except Exception:
+                pass
 
     def _worker(self, fn, done=None):
         def run():
@@ -492,9 +512,9 @@ class GuardApp:
             self.ui(lambda: self._paint_status(online))
             if not data:
                 return
-            cats = data.get("categories", {})
+            cats = _count_map(data.get("categories", {}))
             total = data.get("total", 0)
-            sev = data.get("severities", {})
+            sev = _count_map(data.get("severities", {}))
             cards = [
                 ("Events", str(total)),
                 ("Creds", str(data.get("creds", 0))),

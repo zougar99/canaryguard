@@ -202,9 +202,18 @@ class LogStore:
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.execute("PRAGMA busy_timeout=10000")
         self._conn.execute("PRAGMA synchronous=NORMAL")
+        # Cap WAL growth and reclaim a bloated WAL left by an earlier crash or
+        # by many concurrent writers (a 200MB+ WAL makes every commit's
+        # auto-checkpoint slow enough to stall dashboard requests).
+        self._conn.execute("PRAGMA journal_size_limit=67108864")
+        self._conn.execute("PRAGMA wal_autocheckpoint=1000")
         self._conn.executescript(SCHEMA)
         self._migrate()
         self._conn.commit()
+        try:
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except Exception:
+            pass
 
     def _migrate(self):
         cols = {r[1] for r in self._conn.execute("PRAGMA table_info(decoys)")}
