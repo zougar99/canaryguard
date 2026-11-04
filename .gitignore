@@ -22,6 +22,9 @@ dist/
 honeytokens_state.json
 ingest_state.json
 
+# ---- generated evidence snapshots ----
+evidence_*.zip
+
 # ---- decoy files & honeytokens (would reveal tokens) ----
 CanaryDecoys/
 

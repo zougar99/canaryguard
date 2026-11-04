@@ -51,6 +51,7 @@
         "auto_start": true,
         "username": "admin",
         "password": "CHANGE_ME_STRONG_PASSWORD",
+        "noauth_allow_remote": false,
         "secret_key": "RANDOM_LONG_STRING"
     },
     "ingest": {

@@ -71,8 +71,10 @@ class GuardApp:
         self.root.minsize(860, 560)
         self.session = requests.Session()
         self.online = tk.BooleanVar(value=False)
-        self._build_login()
         self._refresh_job = None
+        self.splash = None
+        self._build_splash()
+        self._try_connect()
 
     # ---------- plumbing ----------
 
@@ -107,6 +109,70 @@ class GuardApp:
         return r
 
     # ---------- login ----------
+
+    def _build_splash(self):
+        """Small 'connecting' window shown while the dashboard starts up."""
+        win = tk.Toplevel(self.root)
+        self.splash = win
+        win.title("CanaryGuard")
+        win.geometry("420x170")
+        win.resizable(False, False)
+        frm = tk.Frame(win, padx=20, pady=18)
+        frm.pack(fill="both", expand=True)
+        tk.Label(frm, text="🛡️ CanaryGuard Desktop",
+                 font=("Segoe UI", 14, "bold")).pack()
+        self._splash_lbl = tk.Label(frm, text="connecting to dashboard...", fg="#666")
+        self._splash_lbl.pack(pady=(10, 8))
+        tk.Button(frm, text="Retry now", width=16,
+                  command=self._try_connect).pack()
+
+    def _try_connect(self):
+        """Go straight to the control panel when the dashboard has no password."""
+        if self.splash is not None:
+            try:
+                self._splash_lbl.config(text="connecting to dashboard...", fg="#666")
+            except Exception:
+                pass
+
+        def work():
+            try:
+                r = self.session.get(BASE_URL + "/api/stats", timeout=4)
+                return r.status_code
+            except Exception as exc:
+                return exc
+
+        def done(res):
+            if isinstance(res, Exception):
+                if self.splash is not None:
+                    self._splash_lbl.config(
+                        text="dashboard offline - retrying every 3s\n"
+                             "start it: schtasks /run /tn \"CanaryGuard\"",
+                        fg="#c0392b")
+                self.root.after(3000, self._try_connect)
+                return
+            if res == 200:
+                self._close_splash()
+                self._build_main()
+                return
+            if res in (401, 403):
+                # A password is still configured (401) or remote-only guard (403)
+                self._close_splash()
+                self._build_login()
+                return
+            if self.splash is not None:
+                self._splash_lbl.config(text=f"unexpected HTTP {res} - retrying...",
+                                        fg="#c0392b")
+            self.root.after(3000, self._try_connect)
+
+        self._worker(work, done)
+
+    def _close_splash(self):
+        if self.splash is not None:
+            try:
+                self.splash.destroy()
+            except Exception:
+                pass
+            self.splash = None
 
     def _build_login(self):
         win = tk.Toplevel(self.root)
@@ -169,6 +235,7 @@ class GuardApp:
     # ---------- main window ----------
 
     def _build_main(self):
+        self.root.deiconify()
         bar = tk.Frame(self.root, bg="#12343b", height=46)
         bar.pack(fill="x")
         tk.Label(bar, text="🛡️ CanaryGuard", bg="#12343b", fg="white",

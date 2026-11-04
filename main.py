@@ -42,7 +42,43 @@ if IS_WINDOWS:
     from canaryguard.theft import TheftAlarm
 
 
+_INSTANCE_HANDLE = None
+
+
+def _single_instance_guard():
+    """Windows named mutex: only one CanaryGuard may run at a time.
+
+    Werkzeug sets SO_REUSEADDR, which on Windows lets several processes bind
+    the same port. Without this guard a repeated auto-revive piles up dozens
+    of main.py instances that all write to the same SQLite DB, starve the CPU
+    and make the watchdog think the dashboard is down again.
+    """
+    if not IS_WINDOWS:
+        return None
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        kernel32.CreateMutexW.restype = wintypes.HANDLE
+        kernel32.CreateMutexW.argtypes = (wintypes.LPVOID, wintypes.BOOL, wintypes.LPCWSTR)
+        handle = kernel32.CreateMutexW(None, False, "Local\\CanaryGuardSingleInstance")
+        if not handle:
+            return None
+        if ctypes.get_last_error() == 183:  # ERROR_ALREADY_EXISTS
+            return False
+        return handle
+    except Exception as exc:
+        print(f"[main] single-instance guard unavailable: {exc}")
+        return None
+
+
 def main():
+    global _INSTANCE_HANDLE
+    _INSTANCE_HANDLE = _single_instance_guard()
+    if _INSTANCE_HANDLE is False:
+        print("[main] another CanaryGuard instance is already running - exiting")
+        return
     config = Config.load()
     ipb = None
     if IS_WINDOWS:

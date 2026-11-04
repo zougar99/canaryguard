@@ -41,6 +41,15 @@ class DashboardServer:
 
     def _before_request(self):
         if not self._auth_enabled():
+            # No password configured: allow this PC only, unless explicitly
+            # opted-in via dashboard.noauth_allow_remote. Keeps the LAN /
+            # internet from reaching an unauthenticated dashboard.
+            if not self.config.get("dashboard", "noauth_allow_remote", default=False):
+                ip = request.remote_addr or ""
+                if ip not in ("127.0.0.1", "::1", "localhost"):
+                    if request.path.startswith("/api/"):
+                        return jsonify({"error": "local access only (no dashboard password set)"}), 403
+                    return "CanaryGuard dashboard is local-only (no password set)", 403
             return None
         path = request.path
         if path.startswith(AUTH_EXEMPT_PREFIXES):
