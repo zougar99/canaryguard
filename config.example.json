@@ -52,6 +52,7 @@
         "username": "admin",
         "password": "CHANGE_ME_STRONG_PASSWORD",
         "noauth_allow_remote": false,
+        "trusted_networks": [],
         "secret_key": "RANDOM_LONG_STRING"
     },
     "ingest": {

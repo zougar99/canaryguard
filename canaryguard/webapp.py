@@ -39,6 +39,32 @@ class DashboardServer:
     def _authorized(self):
         return session.get("cg_authed") is True
 
+    def _local_ip_ok(self, ip):
+        """Loopback, plus any subnet listed in dashboard.trusted_networks.
+
+        Use trusted_networks for a VPN tunnel (e.g. 10.8.0.0/24 for
+        WireGuard, 100.64.0.0/10 for Tailscale) so remote access works
+        without putting a password on the dashboard.
+        """
+        if ip in ("127.0.0.1", "::1", "localhost"):
+            return True
+        nets = self.config.get("dashboard", "trusted_networks", default=None) or []
+        if not nets:
+            return False
+        try:
+            import ipaddress
+
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            return False
+        for net in nets:
+            try:
+                if addr in ipaddress.ip_network(str(net), strict=False):
+                    return True
+            except ValueError:
+                continue
+        return False
+
     def _before_request(self):
         if not self._auth_enabled():
             # No password configured: allow this PC only, unless explicitly
@@ -46,10 +72,11 @@ class DashboardServer:
             # internet from reaching an unauthenticated dashboard.
             if not self.config.get("dashboard", "noauth_allow_remote", default=False):
                 ip = request.remote_addr or ""
-                if ip not in ("127.0.0.1", "::1", "localhost"):
+                if not self._local_ip_ok(ip):
                     if request.path.startswith("/api/"):
                         return jsonify({"error": "local access only (no dashboard password set)"}), 403
-                    return "CanaryGuard dashboard is local-only (no password set)", 403
+                    return ("CanaryGuard dashboard is local-only (no password set). "
+                            "Add your VPN subnet to dashboard.trusted_networks to allow it."), 403
             return None
         path = request.path
         if path.startswith(AUTH_EXEMPT_PREFIXES):
