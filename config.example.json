@@ -191,6 +191,11 @@
         "time": "02:00",
         "max_mb": 10
     },
+    "weekly_digest": {
+        "enabled": true,
+        "day": "sunday",
+        "time": "20:00"
+    },
     "ipblock": {
         "enabled": true,
         "max_fails": 5,

@@ -37,6 +37,15 @@ function Test-Port([string]$h, [int]$p, [int]$ms = 1500) {
     } catch { return $false } finally { $c.Close() }
 }
 
+# TCP is not enough: a wedged process keeps the port open but never answers.
+# Probe the control API over HTTP; on failure the service is revived.
+function Test-Http([string]$url, [int]$seconds = 6) {
+    try {
+        $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec $seconds
+        return ($r.StatusCode -eq 200)
+    } catch { return $false }
+}
+
 # One revive attempt per service every 5 minutes, so a slow start cannot turn
 # into a spawn storm.
 function Too-Soon([string]$file, [int]$min) {
@@ -70,7 +79,8 @@ if (-not $sup) {
 $userStopped = Test-Path "$dir\tamper.stopped"
 if ($userStopped) {
     # nothing to do: stop is intentional
-} elseif (-not (Test-Port '127.0.0.1' 8080)) {
+} elseif (-not (Test-Port '127.0.0.1' 8080) -or
+          -not (Test-Http 'http://127.0.0.1:8080/api/control/state' 6)) {
     if (-not (Too-Soon "$dir\tamper.cg.cooldown" 5)) {
         Mark-Try "$dir\tamper.cg.cooldown"
         Start-ScheduledTask -TaskName 'CanaryGuard'

@@ -43,3 +43,5 @@ Desktop.ini
 # ---- IDE ----
 .vscode/
 .idea/
+# weekly recap state (which ISO week was sent)
+weekly.state

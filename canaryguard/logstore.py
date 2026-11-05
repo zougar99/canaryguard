@@ -317,6 +317,54 @@ class LogStore:
             ).fetchall()
             return [(r["hour"], r["n"]) for r in rows]
 
+    _LOCAL_IPS = ("127.0.0.1", "::1", "0.0.0.0", "localhost", "-", "local")
+
+    def repeat_ips(self, min_hits=3, limit=15, days=0):
+        """Attackers that keep coming back.
+
+        Returns [{"src_ip", "n", "first_seen", "last_seen"}] ordered by hit
+        count. days=0 means all time; >0 restricts to the last N days.
+        """
+        sql = (
+            "SELECT src_ip, COUNT(*) AS n, MIN(ts) AS first_seen, MAX(ts) AS last_seen "
+            "FROM events WHERE src_ip IS NOT NULL "
+            f"AND src_ip NOT IN ({','.join('?' for _ in self._LOCAL_IPS)}) "
+        )
+        args = list(self._LOCAL_IPS)
+        if days > 0:
+            sql += "AND ts >= datetime('now', ?) "
+            args.append(f"-{int(days)} days")
+        sql += "GROUP BY src_ip HAVING n >= ? ORDER BY n DESC LIMIT ?"
+        args += [int(min_hits), int(limit)]
+        with self._lock:
+            rows = self._conn.execute(sql, args).fetchall()
+        return [dict(r) for r in rows]
+
+    def hourly_histogram(self, days=90):
+        """Events per hour-of-day over the last N days -> list[24]."""
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT CAST(strftime('%H', ts) AS INTEGER) AS h, COUNT(*) AS n "
+                "FROM events WHERE ts >= datetime('now', ?) GROUP BY h",
+                (f"-{int(days)} days",),
+            ).fetchall()
+        buckets = [0] * 24
+        for r in rows:
+            if 0 <= r["h"] <= 23:
+                buckets[r["h"]] = r["n"]
+        return buckets
+
+    def unique_ips(self, days=7):
+        """Distinct attacker source IPs over the last N days."""
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT COUNT(DISTINCT src_ip) AS n FROM events "
+                "WHERE ts >= datetime('now', ?) AND src_ip IS NOT NULL "
+                f"AND src_ip NOT IN ({','.join('?' for _ in self._LOCAL_IPS)})",
+                [f"-{int(days)} days", *self._LOCAL_IPS],
+            ).fetchone()
+        return int(row["n"] or 0)
+
     def geo_points(self, hours=24):
         with self._lock:
             rows = self._conn.execute(

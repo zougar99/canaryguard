@@ -265,6 +265,12 @@ def main():
 
     # ---- notification power-ups: night escalation, digest, telegram bot ----
     ing.alerts.start_background()
+    try:
+        from canaryguard.weekly import WeeklyRecap
+
+        WeeklyRecap(config, alerts=ing.alerts).start()
+    except Exception as exc:
+        print(f"[main] weekly recap failed to start: {exc}")
     bot = TGBot(config, alerts=ing.alerts)
     bot.monitors = {"procs": pm, "usb": um, "net": nm}
     if cm:

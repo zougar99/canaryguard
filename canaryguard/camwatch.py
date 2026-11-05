@@ -59,6 +59,37 @@ def _walk(key, prefix, out):
         pass
 
 
+def device_status():
+    """Camera/mic usage snapshot from the ConsentStore registry.
+
+    Returns {"camera": {...}, "microphone": {...}} where each dict has:
+      in_use: bool, apps: [{"app": ..., "since": "HH:MM:SS"}], recent_24h: int
+    """
+    snapshot = {}
+    for reg_kind, label in _KINDS.items():
+        apps, recent_24h = [], 0
+        cutoff = time.time() - 86400
+        for entry in _read_usage(reg_kind).values():
+            try:
+                start, stop, app = entry
+            except Exception:
+                continue
+            try:
+                start_dt = _filetime_to_dt(start)
+            except Exception:
+                start_dt = None
+            if start_dt and start_dt.timestamp() >= cutoff:
+                recent_24h += 1
+            if stop is None or start > stop:   # session open
+                apps.append({
+                    "app": str(app),
+                    "since": start_dt.strftime("%H:%M:%S") if start_dt else "?",
+                })
+        snapshot[label] = {"in_use": bool(apps), "apps": apps,
+                           "recent_24h": recent_24h}
+    return snapshot
+
+
 class CameraMicMonitor:
     """Detect when any application turns on the webcam or microphone.
 

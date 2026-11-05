@@ -39,10 +39,12 @@ HELP = (
     "\U0001f916 <b>CanaryGuard Control</b>\n"
     "/status - state, uptime, monitors\n"
     "/start - start the service\n"
-    "/stop - stop the service\n"
+    "/stop - stop the service (needs ✅ confirmation)\n"
     "/sleep - pause all monitors (dashboard stays up)\n"
     "/resume - resume monitors\n"
-    "/restart - restart the service\n"
+    "/restart - restart the service (needs ✅ confirmation)\n"
+    "/panic - lock the PC + Telegram alert (needs ✅ confirmation)\n"
+    "/cam - camera/mic usage right now + screenshot\n"
     "/digest - send a summary now\n"
     "/screenshot - screen capture\n"
     "/lock - lock the PC\n"
@@ -60,6 +62,8 @@ ALIASES = {
     "sleep": "pause", "pause": "pause", "snooze": "pause",
     "resume": "resume", "wake": "resume", "continue": "resume",
     "restart": "restart", "reboot": "restart",
+    "panic": "panic", "sos": "panic",
+    "cam": "cam", "camera": "cam", "webcam": "cam", "eyes": "cam",
     "digest": "digest", "summary": "digest",
     "screenshot": "screenshot", "screen": "screenshot", "shot": "screenshot",
     "lock": "lock",
@@ -95,6 +99,10 @@ class ControlSupervisor:
         self.session = requests.Session()
         self.offset = 0
         self.started = time.time()
+        self.pending: dict = {}          # (chat_id, sender_id) -> {"action", "ts", "thread"}
+        self.confirm_ttl = 120.0
+    # commands that must carry an inline-button confirmation
+    DESTRUCTIVE = frozenset({"stop", "restart", "panic"})
 
     # ------------------------------------------------------------ telegram
 
@@ -106,7 +114,7 @@ class ControlSupervisor:
         except Exception:
             return {}
 
-    def reply(self, chat_id, text, thread_id=None):
+    def reply(self, chat_id, text, thread_id=None, keyboard=None):
         payload = {
             "chat_id": chat_id,
             "text": text,
@@ -115,10 +123,98 @@ class ControlSupervisor:
         }
         if thread_id:
             payload["message_thread_id"] = thread_id
+        if keyboard:
+            payload["reply_markup"] = keyboard
         try:
             self.api("sendMessage", chat_id=chat_id, **{k: v for k, v in payload.items() if k != "chat_id"})
         except Exception as exc:
             log(f"reply failed: {exc}")
+
+    # ---- inline confirmation for destructive commands ----
+
+    def ask_confirm(self, chat_id, thread, action, sender):
+        label = {"stop": "STOP the service", "restart": "RESTART the service",
+                 "panic": "PANIC (lock + alert)"}.get(action, action.upper())
+        kb = {"inline_keyboard": [[
+            {"text": f"✅ Yes, {action}", "callback_data": f"cf:{action}"},
+            {"text": "❌ Cancel", "callback_data": f"cn:{action}"},
+        ]]}
+        key = (chat_id, sender.get("id"))
+        self.pending[key] = {"action": action, "ts": time.time(), "thread": thread}
+        self.reply(chat_id,
+                   f"⚠️ <b>Confirm {html.escape(label)}?</b>\n"
+                   f"This runs immediately. Expires in "
+                   f"{int(self.confirm_ttl)}s.",
+                   thread, keyboard=kb)
+
+    def _answer_cb(self, cbq, text=None, alert=False):
+        try:
+            self.api("answerCallbackQuery", callback_query_id=cbq.get("id"),
+                     text=text or "", show_alert=bool(alert))
+        except Exception as exc:
+            log(f"answerCallbackQuery failed: {exc}")
+
+    def _edit_message(self, chat_id, message_id, text, thread_id=None):
+        if not message_id:
+            return
+        payload = {"chat_id": chat_id, "message_id": message_id,
+                   "text": text, "parse_mode": "HTML"}
+        if thread_id:
+            payload["message_thread_id"] = thread_id
+        try:
+            self.api("editMessageText", **{k: v for k, v in payload.items() if k != "chat_id"})
+        except Exception as exc:
+            log(f"editMessageText failed: {exc}")
+
+    def handle_callback(self, cbq):
+        data = (cbq.get("data") or "").strip().lower()
+        msg = cbq.get("message") or {}
+        chat = msg.get("chat") or {}
+        chat_id = chat.get("id")
+        sender = cbq.get("from") or {}
+        thread = msg.get("message_thread_id")
+        if sender.get("is_bot"):
+            self._answer_cb(cbq, "no bots")
+            return
+        fake_msg = {"chat": chat, "from": sender}
+        if not self.chat_allowed(chat) or not self.sender_allowed(fake_msg, chat):
+            log(f"denied callback data={data} chat={chat_id} user={sender.get('id')}")
+            self._answer_cb(cbq, "not allowed", alert=True)
+            return
+        kind, _, action = data.partition(":")
+        if action not in self.DESTRUCTIVE or kind not in ("cf", "cn"):
+            self._answer_cb(cbq, "unknown action")
+            return
+        # only the person who asked may confirm or cancel
+        key = (chat_id, sender.get("id"))
+        pend = self.pending.get(key)
+        msg_id = msg.get("message_id")
+        if not pend or pend.get("action") != action:
+            self._answer_cb(cbq, "expired — send the command again", alert=True)
+            return
+        if time.time() - pend.get("ts", 0) > self.confirm_ttl:
+            self.pending.pop(key, None)
+            self._answer_cb(cbq, "expired — send the command again", alert=True)
+            self._edit_message(chat_id, msg_id, "⌛ confirmation expired", thread)
+            return
+        self.pending.pop(key, None)
+        if kind == "cn":
+            self._answer_cb(cbq, "cancelled")
+            self._edit_message(chat_id, msg_id, "❌ cancelled", thread)
+            return
+        self._answer_cb(cbq, f"confirmed: {action}")
+        self._edit_message(chat_id, msg_id,
+                           f"✅ confirmed — running <code>{html.escape(action)}</code>…",
+                           thread)
+        handlers = {"stop": self.cmd_stop, "restart": self.cmd_restart,
+                    "panic": self.cmd_panic}
+        fn = handlers.get(action)
+        if fn:
+            try:
+                fn(chat_id, thread)
+            except Exception as exc:
+                log(f"confirmed action failed: {exc}")
+                self.reply(chat_id, f"❌ {html.escape(str(exc))}", thread)
 
     def send_photo(self, chat_id, data, caption=""):
         url = f"https://api.telegram.org/bot{self.token}/sendPhoto"
@@ -244,6 +340,47 @@ class ControlSupervisor:
         except Exception as exc:
             self.reply(chat_id, f"\u274c lock failed: {html.escape(str(exc))}", thread)
 
+    def cmd_panic(self, chat_id, thread):
+        try:
+            r = self.session.post(f"{API}/api/panic", timeout=10)
+            ok = r.ok
+        except Exception:
+            ok = False
+        if ok:
+            self.reply(chat_id, "\U0001f6a8 <b>PANIC</b> — workstation locked, "
+                                "Telegram alert sent.", thread)
+        else:
+            self.reply(chat_id, "\u274c panic failed — is the dashboard up?", thread)
+
+    def cmd_cam(self, chat_id, thread):
+        try:
+            from canaryguard.camwatch import device_status
+
+            snap = device_status()
+        except Exception as exc:
+            self.reply(chat_id, f"\u274c camera status failed: {html.escape(str(exc))}",
+                       thread)
+            return
+        lines = ["\U0001f4f8 <b>ROOM STATUS</b>"]
+        for label, d in (("\U0001f4f7 camera", snap.get("camera", {})),
+                         ("\U0001f3a4 microphone", snap.get("mic", {}))):
+            apps = d.get("apps") or []
+            if d.get("in_use") and apps:
+                names = html.escape(", ".join(a["app"] for a in apps[:3]))
+                lines.append(f"{label}: <b>IN USE</b> by {names}")
+            else:
+                lines.append(f"{label}: free (recent 24h: {d.get('recent_24h', 0)})")
+        lines.append("no physical webcam on this PC — status only, no photo taken")
+        self.reply(chat_id, "\n".join(lines), thread)
+        try:
+            resp = self.session.get(f"{API}/api/screenshot", timeout=20)
+            if resp.ok and resp.content:
+                self.send_photo(chat_id, resp.content,
+                                caption=f"\U0001f4f8 {datetime.now():%H:%M:%S}")
+        except Exception as exc:
+            self.reply(chat_id, f"\u274c screenshot failed: {html.escape(str(exc))}",
+                       thread)
+
     def cmd_procs(self, chat_id, thread):
         try:
             import psutil
@@ -326,20 +463,21 @@ class ControlSupervisor:
         handlers = {
             "status": lambda: self.cmd_status(chat_id, thread),
             "start": lambda: self.cmd_start(chat_id, thread),
-            "stop": lambda: self.cmd_stop(chat_id, thread),
             "pause": lambda: self.cmd_pause(chat_id, thread),
             "resume": lambda: self.cmd_resume(chat_id, thread),
-            "restart": lambda: self.cmd_restart(chat_id, thread),
             "digest": lambda: self.cmd_digest(chat_id, thread),
             "screenshot": lambda: self.cmd_screenshot(chat_id, thread),
             "lock": lambda: self.cmd_lock(chat_id, thread),
             "procs": lambda: self.cmd_procs(chat_id, thread),
+            "cam": lambda: self.cmd_cam(chat_id, thread),
             "id": lambda: self.cmd_id(chat_id, thread, chat, msg),
             "help": lambda: self.reply(chat_id, HELP, thread),
         }
         try:
             if cmd in ("mute", "unmute"):
                 self.cmd_mute(chat_id, thread, arg, on=(cmd == "mute"))
+            elif action in self.DESTRUCTIVE:
+                self.ask_confirm(chat_id, thread, action, sender)
             elif action in handlers:
                 handlers[action]()
         except Exception as exc:
@@ -367,6 +505,10 @@ class ControlSupervisor:
                 backoff = 5
                 for upd in data.get("result") or []:
                     self.offset = max(self.offset, upd.get("update_id", 0) + 1)
+                    cbq = upd.get("callback_query")
+                    if cbq:
+                        self.handle_callback(cbq)
+                        continue
                     msg = (upd.get("message") or upd.get("edited_message")
                            or upd.get("channel_post") or upd.get("edited_channel_post"))
                     if msg:

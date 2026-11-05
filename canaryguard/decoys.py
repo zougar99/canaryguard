@@ -346,6 +346,7 @@ class DecoyWatcher:
             from watchdog.events import FileSystemEventHandler
 
             os.makedirs(self.folder, exist_ok=True)
+            manager = self.manager
 
             class Handler(FileSystemEventHandler):
                 def on_any_event(self, event):
@@ -353,7 +354,7 @@ class DecoyWatcher:
                     if "canarydecoys" not in path:
                         return
                     label = os.path.basename(event.src_path)
-                    self.manager.trip(
+                    manager.trip(
                         f"decoy_folder:{label}",
                         f"folder:{event.event_type}",
                         f"file access ({event.event_type}) in decoy folder",

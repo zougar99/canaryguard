@@ -456,6 +456,42 @@ class DashboardServer:
         def api_night():
             return jsonify(self._night_state())
 
+        @app.route("/api/insights")
+        def api_insights():
+            """Who keeps coming back — repeat offenders + attack clock."""
+            store = self.store
+            repeat = store.repeat_ips(3, 20)
+            blocked = set(self._blocked_ips(ttl=10))
+            payload = []
+            for row in repeat:
+                ip = row["src_ip"]
+                try:
+                    m = store.ip_meta(ip) or {}
+                except Exception:
+                    m = {}
+                payload.append({
+                    "ip": ip,
+                    "hits": row["n"],
+                    "first_seen": row["first_seen"],
+                    "last_seen": row["last_seen"],
+                    "country": m.get("country") or "",
+                    "city": m.get("city") or "",
+                    "org": m.get("org") or "",
+                    "blocked": ip in blocked,
+                })
+            try:
+                events_7d = int(sum(n for _, n in store.timeline(7 * 24)))
+            except Exception:
+                events_7d = 0
+            return jsonify({
+                "repeat": payload,
+                "hours": store.hourly_histogram(90),
+                "unique_7d": store.unique_ips(7),
+                "unique_30d": store.unique_ips(30),
+                "blocked": len(blocked),
+                "events_7d": events_7d,
+            })
+
         @app.route("/api/stats")
         def api_stats():
             return jsonify({

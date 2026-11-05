@@ -106,6 +106,7 @@ every service, every helper process and every task switch runs hidden in the bac
 | Night escalation | 23:00-07:00 events are bumped one severity level; below `night_floor` is held for the morning digest |
 | Batching | Groups bursts into a single message |
 | Digest | Daily summary at 08:00 |
+| Weekly recap | Sunday 20:00 "this week in numbers" message (configurable day/time via `weekly_digest`) |
 | Screenshots | Optional screen capture attached to selected categories |
 | Mute | Silence individual categories at runtime |
 | GeoIP | Country/city/org enrichment for source IPs |
@@ -648,6 +649,7 @@ Important sections and their effect:
 | `panic` | lock on brute force, lock on USB grab, optional idle lock |
 | `telegram_bot` | bot ownership, allowed chats, admin users |
 | `ipblock` | firewall auto-block thresholds |
+| `weekly_digest` | day/time of the weekly recap (sent once per ISO week) |
 | `evidence` | daily compact backup to Telegram (time, max size) |
 
 Minimal example of a fully working local install:
@@ -684,6 +686,7 @@ Two authentication modes:
 - **Overview** — KPI cards (events, critical, credentials, monitors, uptime, blocked IPs), activity chart, severity donut, top attacker IPs, **attacker map** (offline country centroids, no external request).
 - **Live feed** — real-time event stream with severity filters and text search.
 - **Notifications** — configure and test Telegram / Discord / email channels live (saved to `config.json`, no restart).
+- **Insights** — "who keeps coming back" repeat-offender table (one-click block), 7d/30d unique-attacker counts, attack clock histogram (events per hour, last 90 days).
 - **Control** — Sleep / Resume / Restart / Stop, mute categories, firewall blocklist, monitor toggles.
 - **Cleanup** — find and delete suspicious files in one click.
 - **NOC console** (`/console`) — fullscreen wallboard fed by `/api/stream` (server-sent events); designed for an always-on second monitor.
@@ -697,6 +700,8 @@ Two authentication modes:
 | `/api/stats` | GET | totals and counters |
 | `/api/events` | GET | recent events |
 | `/api/monitors` / `/api/monitors/<name>` | GET/POST | monitor status / enable / disable |
+| `/api/insights` | GET | repeat offenders, attack clock, unique attackers |
+| `/api/notify` / `/api/notify/test` | GET/POST | configure & test Telegram / Discord / email |
 | `/api/control/state` | GET | runtime mode, uptime, PIDs, monitor count |
 | `/api/control/pause` / `resume` / `stop` / `restart` | POST | runtime control |
 | `/api/mute` / `/api/unmute` | POST | silence a category |
@@ -745,10 +750,12 @@ python guardapp.py
 |---|---|
 | `/status` | mode, uptime, dashboard state, PIDs, monitors, event totals |
 | `/start` | remove stop flag, run `CanaryGuard` task |
-| `/stop` | write `tamper.stopped`, graceful API stop, hard kill fallback |
+| `/stop` | write `tamper.stopped`, graceful API stop, hard kill fallback (✅ confirm) |
 | `/sleep` / `/pause` | stop all monitors, dashboard stays |
 | `/resume` / `/wake` | monitors back on |
-| `/restart` | restart the service |
+| `/restart` | restart the service (✅ confirm) |
+| `/panic` | lock the PC + Telegram alert (✅ confirm) |
+| `/cam` | camera/mic usage right now + screenshot |
 | `/digest` | send today's summary now |
 | `/screenshot` | capture and send a JPEG |
 | `/lock` | lock the workstation |
@@ -756,6 +763,15 @@ python guardapp.py
 | `/mute <cat>` / `/unmute <cat>` | silence a category |
 | `/id` | show chat id, type, sender id (for allowlists) |
 | `/help` | command list |
+
+**Command safety** — `/stop`, `/restart` and `/panic` never run on the first tap. The bot answers
+with an inline **✅ Yes / ❌ Cancel** keyboard; the action runs only when you press the green button,
+and only from the same chat + user that asked. In groups, unauthorised presses are rejected.
+Confirmations expire after 120 seconds.
+
+**Weekly recap** — besides the 08:00 digest, an `alerts`-style summary is sent every **Sunday at
+20:00** (`weekly_digest` section: `{ "enabled": true, "day": "sunday", "time": "20:00" }`). Delete
+`weekly.state` to force a resend; otherwise each ISO week is sent at most once.
 
 **Authorisation** — the bot ignores ordinary messages; only known commands are handled, and only
 from chats in `telegram_bot.allowed_chats` (defaults to the alerting chat) or from
@@ -883,6 +899,7 @@ canaryguard/
 │   ├── usbdisk.py              # USB monitor
 │   ├── usermodule.py           # fake CCTV-NVR API module
 │   ├── webapp.py               # Flask dashboard + JSON API
+│   ├── weekly.py               # weekly Sunday recap to Telegram
 │   └── wifiwatch.py            # Wi-Fi / network helper
 ├── templates/
 │   ├── index.html              # operator dashboard (sidebar / live feed / map)
