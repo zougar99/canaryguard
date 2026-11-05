@@ -665,6 +665,14 @@
               below the <code>night_floor</code> they are held for the 08:00 digest.</div>
           </div>
         </div>
+        <div class="card">
+          <h3>🧠 AI brief <span class="mut">local Qwen2.5-0.5B · advisory only — never changes anything</span>
+            <span class="right"><span class="pill" id="ai-state">not generated yet</span>
+              <button class="btn primary" id="ai-refresh" style="padding:6px 12px">🧠 Generate</button></span></h3>
+          <pre id="ai-out" class="mono" style="white-space:pre-wrap;margin:0;min-height:96px;max-height:340px;overflow:auto;background:var(--card2);border:1px solid var(--line);border-radius:10px;padding:12px">Press “Generate” — the model reads the last 24h/7d straight from SQLite. Nothing leaves this PC.</pre>
+          <div class="map-note" id="ai-meta">provider: –</div>
+        </div>
+
       </section>
 
       <!-- ================= NOTIFICATIONS ================= -->
@@ -1775,6 +1783,37 @@ async function loadInsights() {
   }
 }
 $("#ins-refresh").addEventListener("click", loadInsights);
+
+/* ---------------- AI brief ---------------- */
+async function generateAIBrief() {
+  const btn = document.getElementById("ai-refresh");
+  const out = document.getElementById("ai-out");
+  const state = document.getElementById("ai-state");
+  const meta = document.getElementById("ai-meta");
+  if (!btn || !out) return;
+  btn.disabled = true;
+  btn.textContent = "generating…";
+  state.textContent = "generating…";
+  const t0 = Date.now();
+  try {
+    const d = await api("/api/ai/brief?fresh=1");
+    out.textContent = d.brief || "(empty response)";
+    meta.textContent = "provider: " + (d.provider || "?") +
+      " · " + (d.generated_at || "") +
+      (d.cached ? " · cached" : "") +
+      " · took " + ((Date.now() - t0) / 1000).toFixed(1) + "s";
+    state.textContent = "ready";
+  } catch (e) {
+    out.textContent = "AI brief failed: " + e.message;
+    meta.textContent = "";
+    state.textContent = "failed";
+    toast("AI brief: " + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "🧠 Generate";
+  }
+}
+document.getElementById("ai-refresh").addEventListener("click", generateAIBrief);
 
 /* ---------------- boot ---------------- */
 const startView = (location.hash || "#overview").slice(1);

@@ -46,6 +46,7 @@ HELP = (
     "/panic - lock the PC + Telegram alert (needs ✅ confirmation)\n"
     "/cam - camera/mic usage right now + screenshot\n"
     "/digest - send a summary now\n"
+    "/ai - AI security brief (local model, advisory)\n"
     "/screenshot - screen capture\n"
     "/lock - lock the PC\n"
     "/procs - top CPU processes\n"
@@ -65,6 +66,7 @@ ALIASES = {
     "panic": "panic", "sos": "panic",
     "cam": "cam", "camera": "cam", "webcam": "cam", "eyes": "cam",
     "digest": "digest", "summary": "digest",
+    "ai": "ai", "brief": "ai", "triage": "ai",
     "screenshot": "screenshot", "screen": "screenshot", "shot": "screenshot",
     "lock": "lock",
     "procs": "procs", "top": "procs",
@@ -315,6 +317,22 @@ class ControlSupervisor:
         else:
             self.reply(chat_id, f"\u274c restart failed: {html.escape(msg)}", thread)
 
+    def cmd_ai(self, chat_id, thread):
+        try:
+            resp = self.session.get(f"{API}/api/ai/brief?fresh=1", timeout=120)
+            out = resp.json() if resp.ok else {"error": f"HTTP {resp.status_code}"}
+        except Exception as exc:
+            self.reply(chat_id, f"\u274c AI brief failed: {html.escape(str(exc))}", thread)
+            return
+        if out.get("error"):
+            self.reply(chat_id, f"\u274c {html.escape(str(out['error']))}", thread)
+            return
+        text = (out.get("brief") or "(empty)")[:3400]
+        header = (f"\U0001f9e0 <b>AI brief</b>\n"
+                  f"<code>{html.escape(str(out.get('provider', '?')))}</code> · "
+                  f"{html.escape(str(out.get('generated_at', '')))}")
+        self.reply(chat_id, header + "\n<pre>" + html.escape(text) + "</pre>", thread)
+
     def cmd_digest(self, chat_id, thread):
         try:
             self.session.post(f"{API}/api/digest", timeout=15)
@@ -466,6 +484,7 @@ class ControlSupervisor:
             "pause": lambda: self.cmd_pause(chat_id, thread),
             "resume": lambda: self.cmd_resume(chat_id, thread),
             "digest": lambda: self.cmd_digest(chat_id, thread),
+            "ai": lambda: self.cmd_ai(chat_id, thread),
             "screenshot": lambda: self.cmd_screenshot(chat_id, thread),
             "lock": lambda: self.cmd_lock(chat_id, thread),
             "procs": lambda: self.cmd_procs(chat_id, thread),

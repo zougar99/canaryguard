@@ -140,6 +140,16 @@ class DashboardServer:
     def _muted_categories(self):
         return sorted(str(m) for m in getattr(self.alerts, "muted", set())) if self.alerts else []
 
+    def _ai_engine(self):
+        """Lazily create the local AI triage helper (SQLite + GGUF)."""
+        eng = getattr(self, "_ai", None)
+        if eng is None:
+            from .ai_brief import AITriage
+
+            eng = AITriage(self.config, alerts=self.alerts, logger=self.logger)
+            self._ai = eng
+        return eng
+
     def _blocked_ips(self, ttl=20):
         """Windows firewall rules created by the IP blocker, cached briefly.
 
@@ -455,6 +465,19 @@ class DashboardServer:
         @app.route("/api/night")
         def api_night():
             return jsonify(self._night_state())
+
+        @app.route("/api/ai/brief")
+        def api_ai_brief():
+            """Local AI triage brief (advisory, read-only)."""
+            try:
+                ai = self._ai_engine()
+                fresh = (request.args.get("fresh") or "") == "1"
+                out = ai.brief(fresh=fresh)
+            except Exception as exc:
+                return jsonify({"error": f"AI brief failed: {exc}"}), 500
+            if out.get("enabled") is False:
+                return jsonify({"error": "ai_brief disabled in config"}), 503
+            return jsonify(out)
 
         @app.route("/api/insights")
         def api_insights():

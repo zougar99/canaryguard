@@ -27,6 +27,7 @@ every service, every helper process and every task switch runs hidden in the bac
 ## Table of contents
 
 - [What it does](#what-it-does)
+- [AI Triage Brief (local, advisory)](#ai-triage-brief-local-advisory)
 - [How it works, from A to Z](#how-it-works-from-a-to-z)
 - [Architecture](#architecture)
 - [Requirements](#requirements)
@@ -125,6 +126,56 @@ every service, every helper process and every task switch runs hidden in the bac
 | `control.py` | Runtime state, stop flag, start/stop/pause/resume/restart helpers |
 | `_winproc.py` | Shared helper: every spawned command runs with `CREATE_NO_WINDOW` |
 | `tamper-check.ps1` | Per-minute watchdog: revives killed services, respects intentional stops |
+
+---
+
+## AI Triage Brief (local, advisory)
+
+An optional, **fully local** AI analyst that reads the last 24h/7d of events straight from
+SQLite and writes a short brief: risk level, key observations, suggested next steps.
+Nothing ever leaves the machine, and it is **advisory only** — it never blocks, stops or
+restarts anything.
+
+How it works:
+
+1. `canaryguard/ai_brief.py` gathers context (counts by severity/category, top IPs, repeat
+   offenders, attack-clock peak, failed logins, unique attackers).
+2. A deterministic rules brief is always generated first — **the numbers are always correct**.
+3. If the local model is available it appends "— model notes —" from
+   **Qwen2.5-0.5B-Instruct (Q4_K_M, ~380 MB)** running via prebuilt llama.cpp. If the model
+   fails, the rules brief is returned unchanged.
+4. Cached for 10 minutes; fresh generation on demand.
+
+Setup (the model is **not** in the repo):
+
+```powershell
+# 1. download the GGUF (any Qwen2.5 GGUF works; this one is 379 MB)
+#    https://huggingface.co/Qwen/Qwen2.5-0.5B-Instruct-GGUF
+# 2. prebuilt llama.cpp binaries are downloaded by the operator (not committed):
+#    https://github.com/ggml-org/llama.cpp/releases → llama-*-bin-win-cpu-x64.zip
+#    unzip into tools/llama-bin/
+# 3. point the config at it (config.json — never committed):
+"ai_brief": {
+  "enabled": true,
+  "provider": "auto",           // auto | server | rules
+  "model_path": "C:\\path\\to\\Qwen2.5-0.5B-Instruct.Q4_K_M.gguf",
+  "llama_server": "C:\\path\\to\\canaryguard\\tools\\llama-bin\\llama-server.exe",
+  "server_url": "http://127.0.0.1:11435",
+  "temperature": 0.2,
+  "num_predict": 320
+}
+```
+
+Use it:
+
+- Dashboard → **Insights** tab → **🧠 Generate** button; brief renders inline.
+- Telegram → `/ai` — the brief is sent as a message.
+- API → `GET /api/ai/brief` (cached ≤10 min) or `...?fresh=1`.
+
+Model notes: the 0.5B model is fast (i7-6700 ≈ 36 tokens/s) but limited — it sees only the
+JSON context, never invents verified facts, and may pad with generic advice. The rules
+section above it is the source of truth. For a sharper analyst, swap `model_path` for a
+bigger GGUF (e.g. Qwen2.5-1.5B/3B) — no code changes needed.
 
 ---
 
@@ -686,7 +737,7 @@ Two authentication modes:
 - **Overview** — KPI cards (events, critical, credentials, monitors, uptime, blocked IPs), activity chart, severity donut, top attacker IPs, **attacker map** (offline country centroids, no external request).
 - **Live feed** — real-time event stream with severity filters and text search.
 - **Notifications** — configure and test Telegram / Discord / email channels live (saved to `config.json`, no restart).
-- **Insights** — "who keeps coming back" repeat-offender table (one-click block), 7d/30d unique-attacker counts, attack clock histogram (events per hour, last 90 days).
+- **Insights** — "who keeps coming back" repeat-offender table (one-click block), 7d/30d unique-attacker counts, attack clock histogram (events per hour, last 90 days), **AI brief** (local model).
 - **Control** — Sleep / Resume / Restart / Stop, mute categories, firewall blocklist, monitor toggles.
 - **Cleanup** — find and delete suspicious files in one click.
 - **NOC console** (`/console`) — fullscreen wallboard fed by `/api/stream` (server-sent events); designed for an always-on second monitor.
@@ -701,6 +752,7 @@ Two authentication modes:
 | `/api/events` | GET | recent events |
 | `/api/monitors` / `/api/monitors/<name>` | GET/POST | monitor status / enable / disable |
 | `/api/insights` | GET | repeat offenders, attack clock, unique attackers |
+| `/api/ai/brief` | GET | local AI triage brief (cached ≤10 min; `?fresh=1` forces regeneration) |
 | `/api/notify` / `/api/notify/test` | GET/POST | configure & test Telegram / Discord / email |
 | `/api/control/state` | GET | runtime mode, uptime, PIDs, monitor count |
 | `/api/control/pause` / `resume` / `stop` / `restart` | POST | runtime control |
@@ -757,6 +809,7 @@ python guardapp.py
 | `/panic` | lock the PC + Telegram alert (✅ confirm) |
 | `/cam` | camera/mic usage right now + screenshot |
 | `/digest` | send today's summary now |
+| `/ai` | AI security brief (local model, advisory) |
 | `/screenshot` | capture and send a JPEG |
 | `/lock` | lock the workstation |
 | `/procs` | top CPU processes |
@@ -858,9 +911,11 @@ canaryguard/
 ├── config.example.json         # configuration template (no secrets)
 ├── assets/                     # logo + app icon (PNG / SVG / ICO)
 ├── tools/make_logo.py          # regenerates the logo and icon set
+├── tools/llama-bin/              # prebuilt llama.cpp (download yourself, git-ignored)
 ├── pyproject.toml
 ├── requirements.txt
 ├── canaryguard/
+│   ├── ai_brief.py             # local AI triage brief (GGUF/llama.cpp/rules)
 │   ├── _winproc.py             # shared hidden-subprocess helper (CREATE_NO_WINDOW)
 │   ├── alerts.py               # Telegram / Discord / Slack / e-mail / SIEM
 │   ├── browserwatch.py         # browser credential-file access

@@ -45,3 +45,6 @@ Desktop.ini
 .idea/
 # weekly recap state (which ISO week was sent)
 weekly.state
+
+# llama.cpp prebuilt binaries (downloaded on install)
+tools/llama-bin/
