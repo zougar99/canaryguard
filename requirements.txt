@@ -1,2 +1,8 @@
 flask>=3.0
 requests>=2.31
+psutil>=5.9
+watchdog>=4.0
+Pillow>=10.0
+# Core honeypot itself. Required by canaryguard/protocols.py and
+# canaryguard/usermodule.py, and to receive its logs.
+opencanary
