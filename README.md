@@ -279,8 +279,27 @@ Main API endpoints:
 
 ---
 
-## Demo mode
+### Admin access — full control
 
+The dashboard is single-user by design. The one admin account has **every** privilege:
+Overview, full event history, Actions (lock screen, panic, screenshot, test alert, digest,
+mute/unmute, IP block), Manage (enable/disable every monitor), and all API endpoints.
+There are no granular roles — whoever is admin, admin is king.
+
+Set or reset that password (never hand-edit `config.json` again):
+
+```powershell
+python -m canaryguard.setup_admin              # interactive prompt
+python -m canaryguard.setup_admin --generate   # strong random password, shown once
+```
+
+It updates `dashboard.username` / `dashboard.password` in `config.json` (keeps a `.bak`
+backup, ensures a `secret_key`), then restart the service. Empty password = local-only mode
+(no login, but the dashboard refuses remote connections). `dashboard.trusted_networks`
+whitelists your VPN subnet for passwordless remote access — handy, but treat a compromised
+VPN as full dashboard compromise.
+
+## Demo mode
 See the whole dashboard populated with a realistic 7-day attack history — no sensors, no tokens, no real data.
 
 ```bash

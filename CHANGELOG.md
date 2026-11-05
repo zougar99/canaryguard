@@ -8,7 +8,9 @@
 - Progressive Web App: installable dashboard (manifest + service worker + canary icons), offline-aware.
 - Windows installer pipeline (`packaging/windows/`): PyInstaller exes + Inno Setup `.iss`, scriptable
   release automation; GitHub Release workflow builds exes/installer on `v*` tags.
-- New tests (48) + GitHub Actions CI (Python 3.9 / 3.12) and release workflow.
+- New tests (52) + GitHub Actions CI (Python 3.9 / 3.12) and release workflow.
+- `python -m canaryguard.setup_admin` — bootstrap/reset the dashboard admin password
+  (interactive, `--generate`, or explicit; updates config.json with a .bak backup).
 
 ### Security fixes
 - UTC/local time skew in all SQL "last N hours" filters and evidence purge.
