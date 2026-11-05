@@ -1,6 +1,6 @@
 import os
-import subprocess
 import threading
+from ._winproc import run as _proc_run, popen as _proc_popen
 import time
 from datetime import datetime
 
@@ -90,17 +90,20 @@ class FortressMode:
             wifi = None
             if self.kill_wifi and os.name == "nt":
                 try:
-                    state = subprocess.run(
+                    state = _proc_run(
                         ["netsh", "interface", "show", "interface", f"name={self.adapter}"],
                         capture_output=True, text=True, timeout=10).stdout
                     self._tstate[self.adapter] = state
-                    r = os.system(f'netsh interface set interface "{self.adapter}" disable')
-                    wifi = r == 0
+                    wifi = _proc_run(["netsh", "interface", "set",
+                                      "interface", self.adapter,
+                                      "disable"],
+                                     capture_output=True,
+                                     timeout=10).returncode == 0
                 except Exception:
                     wifi = False
             if self.lock_pc:
                 try:
-                    subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
+                    _proc_popen(["rundll32.exe", "user32.dll,LockWorkStation"])
                 except Exception:
                     pass
             self.engaged = True
@@ -132,8 +135,11 @@ class FortressMode:
             mic = _allow_all("microphone")
             wifi = True
             if self.kill_wifi and self.adapter in getattr(self, "_tstate", {}):
-                r = os.system(f'netsh interface set interface "{self.adapter}" enable')
-                wifi = r == 0
+                wifi = _proc_run(["netsh", "interface", "set",
+                                    "interface", self.adapter,
+                                    "enable"],
+                                   capture_output=True,
+                                   timeout=10).returncode == 0
                 self._tstate.pop(self.adapter, None)
             self.engaged = False
             self._time = time.strftime("%Y-%m-%d %H:%M:%S")

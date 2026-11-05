@@ -1,453 +1,1486 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
-<title>CanaryGuard — OpenCanary Dashboard</title>
+<title>CanaryGuard — Security Dashboard</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" type="image/png" href="/static/favicon.png">
 <link rel="apple-touch-icon" href="/static/favicon.png">
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  :root { --bg:#0f1115; --card:#171a21; --line:#242a36; --txt:#e6e9ef; --mut:#8b93a3; --acc:#4f8cff; --ok:#2ecc71; --warn:#e67e22; --bad:#e74c3c; }
-  * { box-sizing:border-box; }
-  body { margin:0; font-family:'Segoe UI',system-ui,sans-serif; background:var(--bg); color:var(--txt); }
-  header { padding:16px 28px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
-  header h1 { font-size:18px; margin:0; }
-  header img.brand { width:34px; height:34px; filter:drop-shadow(0 2px 6px rgba(0,0,0,.45)); }
-  header span.mut { color:var(--mut); font-size:13px; }
-  .dot { width:9px; height:9px; border-radius:50%; background:var(--ok); display:inline-block; }
-  nav { display:flex; gap:4px; flex-wrap:wrap; margin-left:auto; }
-  nav button { background:transparent; color:var(--mut); border:1px solid transparent; padding:7px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
-  nav button:hover { color:var(--txt); }
-  nav button.active { background:#1c2637; color:var(--acc); border-color:#2c3e5e; }
-  main { padding:24px 28px; display:grid; gap:18px; }
-  .tab { display:none; }
-  .tab.active { display:grid; gap:18px; }
-  .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:14px; }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
-  .card .num { font-size:30px; font-weight:600; }
-  .card .lbl { color:var(--mut); font-size:12px; margin-top:4px; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:18px; }
-  @media (max-width:1000px){ .grid2{ grid-template-columns:1fr; } }
-  table { width:100%; border-collapse:collapse; font-size:13px; }
-  th, td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); }
-  th { color:var(--mut); font-weight:500; }
-  tr:hover td { background:#1c212b; }
-  .badge { padding:2px 9px; border-radius:20px; font-size:11px; font-weight:600; white-space:nowrap; }
-  .b-critical{ background:#7f1d1d; color:#fca5a5; } .b-high{ background:#78350f; color:#fdba74; }
-  .b-medium{ background:#1e3a5f; color:#93c5fd; } .b-low{ background:#14532d; color:#86efac; }
-  .b-info{ background:#242a36; color:#8b93a3; }
-  .b-file{ background:#1e3a5f; color:#93c5fd; } .b-fail{ background:#7f1d1d; color:#fca5a5; }
-  .b-secret{ background:#7c2d12; color:#fdba74; }
-  .timeline { display:flex; align-items:flex-end; gap:2px; height:120px; padding-top:8px; }
-  .tl-bar { background:var(--acc); border-radius:2px 2px 0 0; min-width:6px; flex:1; }
-  .mut { color:var(--mut); }
-  .map { height:320px; border-radius:10px; }
-  .mono { font-family:Consolas,monospace; font-size:12px; }
-  .pill { display:inline-block; background:#1f2633; border:1px solid var(--line); padding:2px 8px; border-radius:6px; margin:2px; font-size:12px; }
-  #top-ips td.ip { cursor:pointer; color:var(--acc); }
-  .section-title { font-size:14px; font-weight:600; margin:0 0 10px; }
-  .dl-row { border:1px solid var(--line); border-radius:8px; background:var(--card); padding:10px 12px; margin-bottom:8px; cursor:pointer; }
-  .dl-row:hover { background:#1c212b; }
-  .dl-row .head { display:flex; justify-content:space-between; }
-  .btn { background:#1c2637; border:1px solid #2c3e5e; color:var(--acc); padding:7px 14px; border-radius:8px; cursor:pointer; font-size:13px; }
-  .btn:hover { background:#22304a; }
-  .btn.danger { color:var(--bad); border-color:#4a2c2c; }
-  .btn.ok { color:var(--ok); border-color:#2c4a3e; }
-  .bar-wrap { flex:1; height:14px; background:#1f2633; border-radius:6px; overflow:hidden; }
-  .bar-fill { height:100%; background:var(--acc); }
-  .filters { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .filters input, .filters select { background:#1c212b; border:1px solid var(--line); color:var(--txt); border-radius:6px; padding:6px 10px; font-size:13px; }
-  .kv { display:grid; grid-template-columns:auto 1fr; gap:4px 14px; font-size:13px; }
-  .kv b { color:var(--mut); font-weight:500; }
+  :root{
+    --bg:#0b0f16; --bg2:#0e141d; --card:#121a24; --card2:#16202c; --line:#22303f;
+    --txt:#e6edf3; --mut:#8896a8; --acc:#2dd4bf; --acc2:#38bdf8;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149; --crit:#ff5c5c;
+    --shadow:0 10px 30px rgba(0,0,0,.35);
+  }
+  html[data-theme="light"]{
+    --bg:#eef2f7; --bg2:#ffffff; --card:#ffffff; --card2:#f4f7fb; --line:#d9e1ea;
+    --txt:#16202b; --mut:#5b6b7c; --acc:#0d9488; --acc2:#0284c7;
+    --ok:#15803d; --warn:#a16207; --bad:#b91c1c; --crit:#b91c1c;
+    --shadow:0 10px 26px rgba(16,32,52,.10);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--txt);
+    font:14px/1.5 'Segoe UI',system-ui,-apple-system,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  a{color:var(--acc2);text-decoration:none}
+  a:hover{text-decoration:underline}
+  button{font:inherit}
+  ::selection{background:rgba(45,212,191,.3)}
+
+  /* ---------- shell ---------- */
+  .app{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+  .sidebar{
+    background:var(--bg2);border-right:1px solid var(--line);
+    display:flex;flex-direction:column;position:sticky;top:0;height:100vh;
+  }
+  .brand{display:flex;align-items:center;gap:10px;padding:18px 18px 14px}
+  .brand img{width:38px;height:38px;filter:drop-shadow(0 3px 8px rgba(0,0,0,.4))}
+  .brand .nm{font-weight:700;font-size:16px;letter-spacing:.2px}
+  .brand .sub{display:block;color:var(--mut);font-size:11px;font-weight:400;letter-spacing:.4px;text-transform:uppercase}
+  .nav{flex:1;overflow-y:auto;padding:6px 10px 14px}
+  .nav .grp{color:var(--mut);font-size:10.5px;letter-spacing:.9px;text-transform:uppercase;margin:14px 10px 6px}
+  .nav a{
+    display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;
+    color:var(--mut);font-size:13.5px;border:1px solid transparent;
+  }
+  .nav a:hover{background:var(--card);color:var(--txt);text-decoration:none}
+  .nav a.on{background:linear-gradient(90deg,rgba(45,212,191,.16),rgba(45,212,191,.04));
+    color:var(--txt);border-color:rgba(45,212,191,.28)}
+  .nav a .ic{width:20px;text-align:center;font-size:14px}
+  .nav a .tail{margin-left:auto;font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums}
+  .side-foot{padding:12px;border-top:1px solid var(--line)}
+  .side-foot .mode{
+    display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;
+    background:var(--card);border:1px solid var(--line);font-size:12.5px;margin-bottom:8px;
+  }
+  .side-foot .mode b{font-weight:600}
+
+  .main{min-width:0;display:flex;flex-direction:column}
+  .topbar{
+    position:sticky;top:0;z-index:30;display:flex;align-items:center;gap:12px;
+    padding:12px 22px;background:color-mix(in srgb,var(--bg) 88%,transparent);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--line);
+  }
+  .topbar h2{font-size:16px;margin:0;font-weight:600}
+  .topbar .spacer{flex:1}
+  .burger{display:none;background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:6px 10px;cursor:pointer}
+  .pill{
+    display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:999px;
+    border:1px solid var(--line);background:var(--card);font-size:12px;color:var(--mut);
+  }
+  .pill i{width:8px;height:8px;border-radius:50%;background:var(--mut);display:inline-block}
+  .pill.live i{background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.16);animation:pulse 2s infinite}
+  .pill.dead i{background:var(--bad);box-shadow:0 0 0 3px rgba(248,81,73,.16)}
+  .pill.night{border-color:rgba(56,189,248,.35);color:var(--acc2)}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.45}}
+  .clock{font-variant-numeric:tabular-nums;color:var(--mut);font-size:12.5px}
+  .topbar .btn{padding:6px 11px}
+  .icon-btn{background:var(--card);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:6px 10px;cursor:pointer}
+  .icon-btn:hover{border-color:var(--acc)}
+  select,input[type=text],input[type=number],input[type=search]{
+    background:var(--card);border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:7px 10px;font-size:13px;outline:none;
+  }
+  select:focus,input:focus{border-color:var(--acc);box-shadow:0 0 0 3px rgba(45,212,191,.14)}
+  .btn{
+    background:var(--card);border:1px solid var(--line);color:var(--txt);
+    padding:8px 14px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:500;
+    display:inline-flex;align-items:center;gap:8px;
+  }
+  .btn:hover{border-color:var(--acc);color:var(--acc)}
+  .btn.primary{background:linear-gradient(180deg,rgba(45,212,191,.24),rgba(45,212,191,.12));
+    border-color:rgba(45,212,191,.45);color:var(--txt)}
+  .btn.primary:hover{background:rgba(45,212,191,.28)}
+  .btn.danger{border-color:rgba(248,81,73,.4);color:#ff9c96}
+  .btn.danger:hover{background:rgba(248,81,73,.14);border-color:var(--bad);color:#fff}
+  .btn.ok{border-color:rgba(63,185,80,.4);color:#8ce99a}
+  .btn[disabled]{opacity:.45;cursor:not-allowed}
+  .btn.ghost{background:transparent}
+
+  main#main{padding:22px;display:grid;gap:16px;max-width:1600px;width:100%}
+
+  /* ---------- views ---------- */
+  .view{display:none}
+  .view.on{display:grid;gap:16px;animation:fade .18s ease-out}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+  .kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:12px}
+  .kpi{
+    position:relative;overflow:hidden;background:var(--card);border:1px solid var(--line);
+    border-radius:12px;padding:14px 16px;box-shadow:var(--shadow);
+  }
+  .kpi::after{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--acc);opacity:.65}
+  .kpi.bad::after{background:var(--bad)}
+  .kpi.warn::after{background:var(--warn)}
+  .kpi.ok::after{background:var(--ok)}
+  .kpi .lab{color:var(--mut);font-size:11.5px;letter-spacing:.4px;text-transform:uppercase}
+  .kpi .val{font-size:27px;font-weight:650;letter-spacing:-.5px;font-variant-numeric:tabular-nums;line-height:1.15;margin-top:4px}
+  .kpi .hint{color:var(--mut);font-size:11.5px;margin-top:2px}
+
+  .grid{display:grid;gap:16px}
+  .g2{grid-template-columns:1fr 1fr}
+  .g3{grid-template-columns:1.4fr 1fr}
+  .card{
+    background:var(--card);border:1px solid var(--line);border-radius:12px;
+    padding:16px;box-shadow:var(--shadow);min-width:0;
+  }
+  .card h3{margin:0 0 12px;font-size:13.5px;font-weight:600;display:flex;align-items:center;gap:8px}
+  .card h3 .mut{font-weight:400;font-size:11.5px}
+  .card h3 .right{margin-left:auto;display:flex;gap:8px;align-items:center}
+  .mut{color:var(--mut)}
+  .mono{font-family:Consolas,'Cascadia Mono',monospace;font-size:12px}
+
+  /* charts */
+  #chart-activity{width:100%;height:200px;display:block;overflow:visible}
+  #chart-activity .grid line{stroke:var(--line);stroke-width:1;stroke-dasharray:3 4}
+  #chart-activity .axis{fill:var(--mut);font-size:10px}
+  #chart-activity .ln{fill:none;stroke:var(--acc);stroke-width:2.2;stroke-linejoin:round;stroke-linecap:round}
+  #chart-activity .dot{fill:var(--bg);stroke:var(--acc);stroke-width:2}
+  .donut-wrap{display:flex;align-items:center;gap:18px;flex-wrap:wrap}
+  .donut{width:150px;height:150px;flex:0 0 auto}
+  .legend{display:grid;gap:7px;font-size:12.5px;flex:1;min-width:150px}
+  .legend .row{display:flex;align-items:center;gap:8px}
+  .legend .sw{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
+  .legend .n{margin-left:auto;font-variant-numeric:tabular-nums;color:var(--mut)}
+
+  .bars{display:grid;gap:9px}
+  .bars .row{display:grid;grid-template-columns:150px 1fr 52px;align-items:center;gap:10px;font-size:12.5px}
+  .bars .track{height:9px;background:var(--card2);border-radius:6px;overflow:hidden;border:1px solid var(--line)}
+  .bars .fill{height:100%;background:linear-gradient(90deg,var(--acc),var(--acc2));border-radius:6px}
+  .bars .n{text-align:right;color:var(--mut);font-variant-numeric:tabular-nums}
+
+  /* tables */
+  .tbl-wrap{overflow:auto;max-height:calc(100vh - 280px);border-radius:10px;border:1px solid var(--line)}
+  table.tbl{width:100%;border-collapse:collapse;font-size:12.8px}
+  .tbl th{
+    position:sticky;top:0;z-index:2;background:var(--card2);color:var(--mut);
+    font-weight:600;font-size:11px;letter-spacing:.5px;text-transform:uppercase;
+    text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);white-space:nowrap;
+  }
+  .tbl td{padding:8px 12px;border-bottom:1px solid color-mix(in srgb,var(--line) 60%,transparent);vertical-align:top}
+  .tbl tbody tr:hover td{background:color-mix(in srgb,var(--acc) 6%,transparent)}
+  .tbl .clip{max-width:520px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tbl .num{text-align:right;font-variant-numeric:tabular-nums}
+  .empty{color:var(--mut);text-align:center;padding:22px 10px !important}
+
+  .badge{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11px;font-weight:600;white-space:nowrap;border:1px solid transparent}
+  .b-critical{background:rgba(248,81,73,.16);color:#ff9c96;border-color:rgba(248,81,73,.35)}
+  .b-high{background:rgba(240,136,62,.16);color:#ffb37a;border-color:rgba(240,136,62,.35)}
+  .b-medium{background:rgba(210,153,34,.16);color:#e9c46a;border-color:rgba(210,153,34,.35)}
+  .b-low{background:rgba(63,185,80,.14);color:#8ce99a;border-color:rgba(63,185,80,.3)}
+  .b-info{background:rgba(139,148,158,.14);color:var(--mut);border-color:var(--line)}
+  .b-blk{background:rgba(56,189,248,.14);color:#8bd6ff;border-color:rgba(56,189,248,.32)}
+
+  .ip-link{color:var(--acc2);cursor:pointer;font-family:Consolas,monospace;font-size:12px}
+  .ip-link:hover{text-decoration:underline}
+
+  /* toolbar */
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .toolbar .spacer{flex:1}
+  .chip{
+    border:1px solid var(--line);background:var(--card);color:var(--mut);
+    padding:5px 11px;border-radius:999px;font-size:12px;cursor:pointer;user-select:none;
+  }
+  .chip:hover{color:var(--txt);border-color:var(--acc)}
+  .chip.on{background:rgba(45,212,191,.16);border-color:rgba(45,212,191,.4);color:var(--txt)}
+
+  /* live feed */
+  .feed{display:grid;gap:7px;max-height:calc(100vh - 250px);overflow:auto;padding-right:4px}
+  .feed .it{
+    display:grid;grid-template-columns:74px 86px 1fr auto;gap:12px;align-items:center;
+    padding:9px 12px;border:1px solid var(--line);border-radius:9px;background:var(--card2);
+    font-size:12.8px;
+  }
+  .feed .it.new{animation:flash 1.4s ease-out}
+  @keyframes flash{0%{background:rgba(45,212,191,.22)}100%{background:var(--card2)}}
+  .feed .t{color:var(--mut);font-variant-numeric:tabular-nums;font-size:11.5px}
+  .feed .cat{font-weight:600}
+  .feed .src{color:var(--mut);font-family:Consolas,monospace;font-size:11.5px;text-align:right}
+
+  /* map */
+  #map{height:330px;border-radius:10px;border:1px solid var(--line);background:var(--card2)}
+  html[data-theme="dark"] .leaflet-tile{filter:brightness(.72) saturate(.8) contrast(1.05)}
+  .leaflet-container{background:var(--card2);font:inherit}
+  .leaflet-popup-content-wrapper,.leaflet-popup-tip{background:var(--card);color:var(--txt);border:1px solid var(--line)}
+  .map-note{color:var(--mut);font-size:11px;margin-top:8px}
+
+  /* mode banner + control */
+  .banner{
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    background:linear-gradient(120deg,color-mix(in srgb,var(--acc) 14%,var(--card)),var(--card));
+    border:1px solid var(--line);border-radius:14px;padding:18px 20px;box-shadow:var(--shadow);
+  }
+  .banner .big{font-size:22px;font-weight:700;letter-spacing:-.3px}
+  .banner .sub{color:var(--mut);font-size:12.5px;margin-top:2px}
+  .banner .ico{font-size:34px;line-height:1}
+  .banner .stats{margin-left:auto;display:flex;gap:22px;flex-wrap:wrap}
+  .banner .stats div{text-align:right}
+  .banner .stats .v{font-size:18px;font-weight:650;font-variant-numeric:tabular-nums}
+  .banner .stats .k{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+
+  .actions{display:flex;gap:10px;flex-wrap:wrap}
+  .actions .btn{min-width:132px;justify-content:center}
+
+  .mon-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:10px}
+  .mon{
+    display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);
+    border-radius:10px;background:var(--card2);font-size:12.8px;
+  }
+  .mon .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mon .st{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.4px}
+  .mon .st.running{color:var(--ok)}
+  .mon .st.stopped,.mon .st.dead{color:var(--bad)}
+  .mon .sw{width:9px;height:9px;border-radius:50%;background:var(--mut);flex:0 0 auto}
+  .mon .sw.running{background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.14)}
+  .mon .sw.stopped,.mon .sw.dead{background:var(--bad)}
+  .mon .tgl{background:transparent;border:1px solid var(--line);color:var(--mut);
+    border-radius:7px;padding:3px 8px;font-size:11px;cursor:pointer}
+  .mon .tgl:hover{border-color:var(--acc);color:var(--acc)}
+
+  .kv{display:grid;grid-template-columns:auto 1fr;gap:8px 18px;font-size:13px}
+  .kv b{color:var(--mut);font-weight:500}
+  .kv .v{font-variant-numeric:tabular-nums}
+
+  .note{border-left:3px solid var(--acc);background:var(--card2);padding:10px 14px;border-radius:8px;color:var(--mut);font-size:12.5px}
+
+  /* modal */
+  .modal{position:fixed;inset:0;z-index:100;display:none;align-items:flex-start;justify-content:center;
+    background:rgba(4,8,14,.62);backdrop-filter:blur(3px);padding:5vh 18px}
+  .modal.on{display:flex}
+  .modal .box{background:var(--bg2);border:1px solid var(--line);border-radius:14px;
+    width:min(880px,100%);max-height:88vh;overflow:auto;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+  .modal .hd{display:flex;align-items:center;gap:12px;padding:16px 18px;border-bottom:1px solid var(--line);
+    position:sticky;top:0;background:var(--bg2);z-index:2}
+  .modal .hd h3{margin:0;font-size:15px}
+  .modal .bd{padding:16px 18px;display:grid;gap:10px}
+  .modal .close{margin-left:auto;background:transparent;border:1px solid var(--line);color:var(--txt);
+    border-radius:8px;padding:4px 10px;cursor:pointer}
+  .ev{border:1px solid var(--line);border-radius:9px;padding:10px 12px;background:var(--card)}
+  .ev .top{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+  .ev pre{margin:8px 0 0;white-space:pre-wrap;word-break:break-word;color:var(--mut);font-size:11.5px}
+  .toast-wrap{position:fixed;right:18px;bottom:18px;z-index:200;display:grid;gap:8px}
+  .toast{background:var(--card);border:1px solid var(--line);border-left:3px solid var(--acc);
+    padding:10px 14px;border-radius:9px;font-size:12.5px;box-shadow:var(--shadow);max-width:340px}
+  .toast.bad{border-left-color:var(--bad)}
+
+  @media (max-width:1400px){ .kpis{grid-template-columns:repeat(3,minmax(0,1fr))} }
+  @media (max-width:1100px){
+    .app{grid-template-columns:1fr}
+    .sidebar{position:fixed;inset:0 auto 0 0;width:250px;z-index:60;transform:translateX(-100%);
+      transition:transform .18s ease;box-shadow:var(--shadow)}
+    .sidebar.open{transform:none}
+    .burger{display:inline-block}
+    .g2,.g3{grid-template-columns:1fr}
+    .banner .stats{margin-left:0}
+  }
+  @media (max-width:680px){
+    main#main{padding:14px}
+    .topbar{padding:10px 14px;flex-wrap:wrap}
+    .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
+    .clock{display:none}
+    .feed .it{grid-template-columns:64px 1fr;row-gap:2px}
+    .feed .src{text-align:left;grid-column:2}
+  }
 </style>
 </head>
 <body>
-<header>
-  <img class="brand" src="/static/logo.png" width="34" height="34" alt="CanaryGuard logo">
-  <span class="dot"></span>
-  <h1>CanaryGuard</h1>
-  <span>OpenCanary honeypot — live attack dashboard</span>
-  <span class="mut" id="updated"></span>
-  <nav>
-    <button data-tab="overview" class="active">Overview</button>
-    <button data-tab="events">Events</button>
-    <button data-tab="creds">Credentials</button>
-    <button data-tab="sessions">Sessions</button>
-    <button data-tab="keys">Keystrokes</button>
-    <button data-tab="files">Files</button>
-    <button data-tab="secrets">Secrets</button>
-<button data-tab="processes">Processes</button>
-<button data-tab="usb">Drives/USB</button>
-    <button data-tab="cleanup">Cleanup</button>
-    <button id="btn-test-alert" title="Send test notification to Telegram">&#128276; Test</button>
-    <button onclick="location='/logout'" title="Log out">&#128682; Logout</button>
-  </nav>
-</header>
-<main>
-
-  <section class="tab active" id="tab-overview">
-    <div class="cards">
-      <div class="card"><div class="num" id="c-total">0</div><div class="lbl">Total events</div></div>
-      <div class="card"><div class="num" id="c-creds">0</div><div class="lbl">Credentials captured</div></div>
-      <div class="card"><div class="num" id="c-top-ip">-</div><div class="lbl">Top source IP</div></div>
-      <div class="card"><div class="num" id="c-critical">0</div><div class="lbl">Critical events (24h)</div></div>
-      <div class="card"><div class="num" id="c-sessions">0</div><div class="lbl">Logins monitored</div></div>
-      <div class="card"><div class="num" id="c-keys">0</div><div class="lbl">Keystroke dumps</div></div>
-    </div>
-    <div class="grid2">
-      <div class="card">
-        <p class="section-title">Activity timeline (24h)</p>
-        <div class="timeline" id="timeline"></div>
-      </div>
-      <div class="card">
-        <p class="section-title">Attack categories (24h)</p>
-        <div id="categories"></div>
+<div class="app">
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <img src="/static/logo.png" alt="" width="38" height="38">
+      <div>
+        <span class="nm">CanaryGuard</span>
+        <span class="sub">Honeypot HIDS</span>
       </div>
     </div>
-    <div class="grid2">
-      <div class="card">
-        <p class="section-title">Top attacker IPs <span class="mut" id="top-ip-count"></span></p>
-        <table><thead><tr><th>IP</th><th>Country</th><th>City</th><th>Events</th></tr></thead>
-        <tbody id="top-ips"></tbody></table>
-      </div>
-      <div class="card">
-        <p class="section-title">Attack source map (24h)</p>
-        <div id="map" class="map"></div>
-      </div>
+    <nav class="nav" id="nav">
+      <div class="grp">Monitor</div>
+      <a href="#overview" data-v="overview"><span class="ic">▦</span> Overview</a>
+      <a href="#live" data-v="live"><span class="ic">◉</span> Live feed<span class="tail" id="nav-live">0</span></a>
+      <a href="#events" data-v="events"><span class="ic">≡</span> Events<span class="tail" id="nav-events">0</span></a>
+      <a href="#control" data-v="control"><span class="ic">⏻</span> Control</a>
+      <div class="grp">Host telemetry</div>
+      <a href="#creds" data-v="creds"><span class="ic">🔑</span> Credentials</a>
+      <a href="#sessions" data-v="sessions"><span class="ic">👤</span> Logon sessions</a>
+      <a href="#keys" data-v="keys"><span class="ic">⌨</span> Keystrokes</a>
+      <a href="#files" data-v="files"><span class="ic">🗂</span> Files</a>
+      <a href="#secrets" data-v="secrets"><span class="ic">🕵</span> Secrets</a>
+      <a href="#procs" data-v="procs"><span class="ic">⚙</span> Processes</a>
+      <a href="#usb" data-v="usb"><span class="ic">🔌</span> Drives / USB</a>
+      <a href="#net" data-v="net"><span class="ic">🌐</span> Network</a>
+      <a href="#clip" data-v="clip"><span class="ic">📋</span> Clipboard</a>
+      <div class="grp">System</div>
+      <a href="#cleanup" data-v="cleanup"><span class="ic">🧹</span> Cleanup</a>
+      <a href="#about" data-v="about"><span class="ic">ⓘ</span> About</a>
+    </nav>
+    <div class="side-foot">
+      <div class="mode"><span class="pill live" id="side-pill" style="border:0;background:transparent;padding:0"><i></i></span>
+        <span id="side-mode">connecting</span></div>
+      <a href="/console" target="_blank" rel="noopener" style="font-size:12px">◱ NOC console →</a>
     </div>
-  </section>
+  </aside>
 
-  <section class="tab" id="tab-events">
-    <div class="card">
-      <p class="section-title">Recent events</p>
-      <table><thead><tr><th>#</th><th>Time</th><th>Category</th><th>Sev</th><th>Source</th><th>Port</th></tr></thead>
-      <tbody id="events"></tbody></table>
-    </div>
-    <div class="card">
-      <p class="section-title">IP drill-down</p>
-      <div id="drill"></div>
-    </div>
-  </section>
+  <div class="main">
+    <header class="topbar">
+      <button class="burger" id="burger" aria-label="Menu">☰</button>
+      <h2 id="page-title">Overview</h2>
+      <span class="pill live" id="live-pill"><i></i><span id="live-text">connecting…</span></span>
+      <span class="pill night" id="night-pill" style="display:none">🌙 night mode</span>
+      <span class="spacer"></span>
+      <span class="clock" id="clock"></span>
+      <select id="rate" title="Refresh interval" aria-label="Refresh interval">
+        <option value="3">3s</option>
+        <option value="5" selected>5s</option>
+        <option value="10">10s</option>
+        <option value="30">30s</option>
+      </select>
+      <button class="icon-btn" id="theme" title="Toggle theme">🌙</button>
+      <button class="btn" id="btn-test-alert" title="Send a Telegram test message">🔔 Test</button>
+      <a class="btn ghost" href="/logout" title="Log out">⎋</a>
+    </header>
 
-  <section class="tab" id="tab-creds">
-    <div class="card">
-      <p class="section-title">Captured credentials</p>
-      <table><thead><tr><th>Time</th><th>Source</th><th>User / Password</th><th>Service</th></tr></thead>
-      <tbody id="creds"></tbody></table>
-    </div>
-  </section>
+    <main id="main">
 
-  <section class="tab" id="tab-sessions">
-    <div class="card">
-      <p class="section-title">Windows logon sessions (4624/4625) <span class="mut" id="sess-count"></span></p>
-      <table><thead><tr><th>Time</th><th>Type</th><th>User</th><th>Source IP</th><th>Logon type</th></tr></thead>
-      <tbody id="sessions"></tbody></table>
-    </div>
-  </section>
+      <!-- ================= OVERVIEW ================= -->
+      <section class="view on" data-view="overview">
+        <div class="kpis">
+          <div class="kpi"><div class="lab">Total events</div><div class="val" id="k-events">0</div><div class="hint" id="k-events-h">all time</div></div>
+          <div class="kpi bad"><div class="lab">Critical · 24h</div><div class="val" id="k-critical">0</div><div class="hint" id="k-crit-h">high severity</div></div>
+          <div class="kpi warn"><div class="lab">Credentials</div><div class="val" id="k-creds">0</div><div class="hint">captured logins</div></div>
+          <div class="kpi ok"><div class="lab">Monitors</div><div class="val" id="k-monitors">0/0</div><div class="hint">running now</div></div>
+          <div class="kpi"><div class="lab">Uptime</div><div class="val" id="k-uptime">–</div><div class="hint" id="k-mode">mode</div></div>
+          <div class="kpi"><div class="lab">Blocked IPs</div><div class="val" id="k-blocked">0</div><div class="hint">firewall rules</div></div>
+        </div>
 
-  <section class="tab" id="tab-keys">
-    <div class="card">
-      <p class="section-title">Keystroke captures <span class="mut" id="keys-count"></span></p>
-      <table><thead><tr><th>Time</th><th>Window</th><th>Keystrokes</th></tr></thead>
-      <tbody id="keys"></tbody></table>
-    </div>
-  </section>
+        <div class="grid g3">
+          <div class="card">
+            <h3>Activity <span class="mut">last 24 hours</span>
+              <span class="right"><span class="pill" id="chart-peak">peak –</span></span></h3>
+            <svg id="chart-activity" viewBox="0 0 720 200" preserveAspectRatio="none" role="img" aria-label="Events per hour"></svg>
+          </div>
+          <div class="card">
+            <h3>Severity mix <span class="mut">24h</span></h3>
+            <div class="donut-wrap">
+              <svg class="donut" id="donut" viewBox="0 0 150 150" role="img" aria-label="Severity distribution"></svg>
+              <div class="legend" id="sev-legend"></div>
+            </div>
+          </div>
+        </div>
 
-  <section class="tab" id="tab-files">
-    <div class="card">
-      <p class="section-title">Folder watchdog events <span class="mut" id="files-count"></span></p>
-      <table><thead><tr><th>Time</th><th>Action</th><th>Path</th></tr></thead>
-      <tbody id="files"></tbody></table>
-    </div>
-  </section>
+        <div class="grid g2">
+          <div class="card">
+            <h3>Top attacker IPs <span class="mut" id="top-ip-count">24h</span></h3>
+            <div class="tbl-wrap" style="max-height:330px">
+              <table class="tbl"><thead><tr><th>Source IP</th><th>Country</th><th>City</th><th class="num">Events</th></tr></thead>
+                <tbody id="top-ips"></tbody></table>
+            </div>
+          </div>
+          <div class="card">
+            <h3>Attack sources <span class="mut">approximate country centroids</span></h3>
+            <div id="map"></div>
+            <div class="map-note" id="map-note">Waiting for geolocated events…</div>
+          </div>
+        </div>
 
-  <section class="tab" id="tab-secrets">
-    <div class="card">
-      <p class="section-title">Secret scanner — tokens/keys found in files <span class="mut" id="secrets-count"></span></p>
-      <table><thead><tr><th>Time</th><th>Kind</th><th>Value</th><th>File</th></tr></thead>
-      <tbody id="secrets"></tbody></table>
-    </div>
-    <div class="card">
-      <p class="section-title">Embedded honeytokens — hidden tokens in normal files</p>
-      <table><thead><tr><th>Kind</th><th>Token</th><th>Status</th><th>File</th></tr></thead>
-      <tbody id="embeds"></tbody></table>
-    </div>
-  </section>
+        <div class="grid g2">
+          <div class="card">
+            <h3>Categories <span class="mut">24h</span></h3>
+            <div class="bars" id="categories"></div>
+          </div>
+          <div class="card">
+            <h3>System</h3>
+            <div class="kv" id="sys-kv"></div>
+          </div>
+        </div>
+      </section>
 
-  <section class="tab" id="tab-processes">
-    <div class="card">
-      <p class="section-title">Process monitor — applications opened / closed on this PC <span class="mut" id="procs-count"></span></p>
-      <table><thead><tr><th>Time</th><th>Event</th><th>Application</th><th>PID</th><th>User</th><th>Path</th></tr></thead>
-      <tbody id="procs"></tbody></table>
-    </div>
-  </section>
+      <!-- ================= LIVE ================= -->
+      <section class="view" data-view="live">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px">
+            <span style="font-weight:600">Live event stream</span>
+            <span class="chip on" data-sev="critical">critical</span>
+            <span class="chip on" data-sev="high">high</span>
+            <span class="chip on" data-sev="medium">medium</span>
+            <span class="chip on" data-sev="low">low</span>
+            <span class="chip on" data-sev="info">info</span>
+            <span class="spacer"></span>
+            <input type="search" id="live-q" placeholder="filter text…" style="width:190px">
+            <button class="btn" id="live-pause">⏸ Pause</button>
+            <button class="btn ghost" id="live-clear">Clear</button>
+          </div>
+          <div class="feed" id="feed"></div>
+        </div>
+      </section>
 
-  <section class="tab" id="tab-usb">
-    <div class="card">
-      <p class="section-title">Drive / USB monitor — connections, folder opens, file activity, executions <span class="mut" id="usb-count"></span></p>
-      <table><thead><tr><th>Time</th><th>Event</th><th>Drive</th><th>Details</th></tr></thead>
-      <tbody id="usb"></tbody></table>
-    </div>
-  </section>
+      <!-- ================= EVENTS ================= -->
+      <section class="view" data-view="events">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px">
+            <input type="search" id="ev-q" placeholder="search category, IP, port…" style="width:260px">
+            <select id="ev-sev">
+              <option value="">all severities</option>
+              <option>critical</option><option>high</option><option>medium</option>
+              <option>low</option><option>info</option>
+            </select>
+            <span class="spacer"></span>
+            <span class="mut" id="ev-count"></span>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>#</th><th>Time</th><th>Category</th><th>Severity</th><th>Source</th><th class="num">Dst port</th></tr></thead>
+              <tbody id="ev-body"></tbody></table>
+          </div>
+        </div>
+      </section>
 
-  <section class="tab" id="tab-cleanup">
-    <div class="card">
-      <p class="section-title">Cleanup — find files left behind</p>
-      <div class="filters">
-        <input type="number" id="cl-min" value="120" min="5" style="width:90px">
-        <span class="mut">minutes</span>
-        <button class="btn ok" onclick="runCleanupScan()">Scan</button>
-        <button class="btn danger" onclick="deleteSelected()">Delete selected</button>
-      </div>
-      <table style="margin-top:12px"><thead><tr>
-        <th style="width:30px"><input type="checkbox" id="cl-all"></th>
-        <th>Path</th><th>Size</th><th>Modified</th></tr></thead>
-      <tbody id="cleanup-rows"></tbody></table>
-      <div id="cleanup-msg" class="mut" style="margin-top:10px"></div>
-    </div>
-  </section>
+      <!-- ================= CREDS ================= -->
+      <section class="view" data-view="creds">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px">
+            <span style="font-weight:600">Captured credentials</span><span class="mut" id="cr-count"></span>
+            <span class="spacer"></span>
+            <button class="btn ghost" id="cr-reveal">👁 Reveal passwords</button>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>Time</th><th>Source</th><th>Username</th><th>Password</th><th>Service</th></tr></thead>
+              <tbody id="cr-body"></tbody></table>
+          </div>
+        </div>
+      </section>
 
-</main>
+      <!-- ================= SESSIONS ================= -->
+      <section class="view" data-view="sessions">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px">
+            <span style="font-weight:600">Windows logon sessions</span>
+            <span class="pill" id="ss-total">0 total</span>
+            <span class="pill" id="ss-failed">0 failed</span>
+            <span class="spacer"></span>
+            <span class="mut">needs admin to read the Security log</span>
+          </div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>Time</th><th>Status</th><th>User</th><th>Source IP</th><th class="num">Logon type</th></tr></thead>
+              <tbody id="ss-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= KEYS ================= -->
+      <section class="view" data-view="keys">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px"><span style="font-weight:600">Keystroke captures</span><span class="mut" id="ky-count"></span></div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>Time</th><th>Window</th><th>Keystrokes</th></tr></thead>
+              <tbody id="ky-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= FILES ================= -->
+      <section class="view" data-view="files">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px"><span style="font-weight:600">Folder watchdog</span><span class="mut" id="fl-count"></span></div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>Time</th><th>Action</th><th>Path</th></tr></thead>
+              <tbody id="fl-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= SECRETS ================= -->
+      <section class="view" data-view="secrets">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px"><span style="font-weight:600">Secret scanner</span><span class="mut" id="sc-count"></span></div>
+          <div class="tbl-wrap" style="max-height:52vh">
+            <table class="tbl"><thead><tr><th>Time</th><th>Kind</th><th>Value</th><th>File</th></tr></thead>
+              <tbody id="sc-body"></tbody></table>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Embedded honeytokens <span class="mut">hidden in normal files</span></h3>
+          <div class="tbl-wrap" style="max-height:36vh">
+            <table class="tbl"><thead><tr><th>Kind</th><th>Token</th><th>Status</th><th>File</th></tr></thead>
+              <tbody id="em-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= PROCS ================= -->
+      <section class="view" data-view="procs">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px"><span style="font-weight:600">Process monitor</span><span class="mut" id="pr-count"></span></div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>Time</th><th>Event</th><th>Application</th><th class="num">PID</th><th>User</th><th>Path</th></tr></thead>
+              <tbody id="pr-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= USB ================= -->
+      <section class="view" data-view="usb">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px"><span style="font-weight:600">Drive / USB monitor</span><span class="mut" id="us-count"></span></div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>Time</th><th>Event</th><th>Drive</th><th>Details</th></tr></thead>
+              <tbody id="us-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= NET ================= -->
+      <section class="view" data-view="net">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px"><span style="font-weight:600">Outbound network</span><span class="mut" id="nt-count"></span></div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>Time</th><th>Process</th><th class="num">PID</th><th>Remote</th><th>Details</th></tr></thead>
+              <tbody id="nt-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CLIPBOARD ================= -->
+      <section class="view" data-view="clip">
+        <div class="card">
+          <div class="toolbar" style="margin-bottom:12px"><span style="font-weight:600">Clipboard sensor</span><span class="mut" id="cl-count"></span></div>
+          <div class="tbl-wrap">
+            <table class="tbl"><thead><tr><th>Time</th><th class="num">Chars</th><th>Keyword</th><th>Preview</th></tr></thead>
+              <tbody id="cl-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= CONTROL ================= -->
+      <section class="view" data-view="control">
+        <div class="banner">
+          <div class="ico" id="ctl-ico">⏻</div>
+          <div>
+            <div class="big" id="ctl-mode">mode</div>
+            <div class="sub" id="ctl-reason">–</div>
+          </div>
+          <div class="stats">
+            <div><div class="v" id="ctl-up">–</div><div class="k">uptime</div></div>
+            <div><div class="v" id="ctl-mon">–</div><div class="k">monitors</div></div>
+            <div><div class="v" id="ctl-pid">–</div><div class="k">pid</div></div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Service control</h3>
+          <div class="actions">
+            <button class="btn primary" data-act="pause">⏸ Sleep</button>
+            <button class="btn primary" data-act="resume">▶ Resume</button>
+            <button class="btn" data-act="restart">⟳ Restart</button>
+            <button class="btn danger" data-act="stop">⏹ Stop</button>
+          </div>
+          <div class="note" style="margin-top:14px">
+            <b>Sleep</b> stops every monitor but keeps this dashboard online.
+            <b>Stop</b> takes the whole service down, including this page — bring it back with
+            <code>Telegram /start</code> or the desktop app.
+          </div>
+        </div>
+
+        <div class="grid g2">
+          <div class="card">
+            <h3>Quick actions</h3>
+            <div class="actions">
+              <button class="btn" data-quick="lock">🔒 Lock PC</button>
+              <button class="btn danger" data-quick="panic">🚨 Panic</button>
+              <button class="btn" data-quick="shot">📸 Screenshot</button>
+              <button class="btn" data-quick="digest">📰 Digest now</button>
+              <button class="btn" data-quick="test">🔔 Test alert</button>
+            </div>
+            <h3 style="margin-top:18px">Muted categories</h3>
+            <div class="toolbar">
+              <input type="text" id="mute-cat" placeholder="e.g. proc:start" style="width:200px">
+              <button class="btn" id="mute-add">🔇 Mute</button>
+              <button class="btn ghost" id="mute-all">🔊 Unmute all</button>
+            </div>
+            <div id="mute-list" style="margin-top:10px"></div>
+          </div>
+
+          <div class="card">
+            <h3>Firewall blocklist <span class="mut" id="blk-count"></span></h3>
+            <div class="toolbar">
+              <input type="text" id="blk-ip" placeholder="IP address" style="width:190px">
+              <button class="btn danger" id="blk-add">🚫 Block</button>
+              <button class="btn ok" id="blk-del">✅ Unblock</button>
+            </div>
+            <div class="tbl-wrap" style="max-height:230px;margin-top:12px">
+              <table class="tbl"><thead><tr><th>Blocked IP</th><th></th></tr></thead><tbody id="blk-body"></tbody></table>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h3>Monitors <span class="mut" id="mon-sum"></span></h3>
+          <div class="mon-grid" id="mon-grid"></div>
+        </div>
+      </section>
+
+      <!-- ================= CLEANUP ================= -->
+      <section class="view" data-view="cleanup">
+        <div class="card">
+          <h3>Cleanup — find files left behind</h3>
+          <div class="toolbar">
+            <input type="number" id="cl-min" value="120" min="5" style="width:90px">
+            <span class="mut">minutes</span>
+            <button class="btn primary" id="cl-scan">Scan</button>
+            <button class="btn danger" id="cl-del">Delete selected</button>
+            <span class="spacer"></span>
+            <span class="mut" id="cl-msg"></span>
+          </div>
+          <div class="tbl-wrap" style="margin-top:12px">
+            <table class="tbl"><thead><tr>
+              <th style="width:34px"><input type="checkbox" id="cl-all"></th>
+              <th>Path</th><th class="num">Size</th><th>Modified</th></tr></thead>
+              <tbody id="cl-body"></tbody></table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ================= ABOUT ================= -->
+      <section class="view" data-view="about">
+        <div class="card" style="text-align:center;padding:34px">
+          <img src="/static/logo.png" width="96" height="96" alt="CanaryGuard logo" style="filter:drop-shadow(0 8px 22px rgba(0,0,0,.35))">
+          <h1 style="margin:12px 0 4px;font-size:26px">CanaryGuard</h1>
+          <p class="mut" style="margin:0">Self-hosted honeypot + host intrusion detection + remote control</p>
+          <div class="actions" style="justify-content:center;margin-top:20px">
+            <a class="btn primary" href="/console" target="_blank" rel="noopener">◱ Open NOC console</a>
+            <a class="btn" href="https://github.com/zougar99/canaryguard" target="_blank" rel="noopener">GitHub</a>
+          </div>
+        </div>
+        <div class="grid g2">
+          <div class="card"><h3>Runtime</h3><div class="kv" id="about-kv"></div></div>
+          <div class="card">
+            <h3>Keyboard</h3>
+            <div class="kv">
+              <b>1 – 9</b><span class="v">jump to a section</span>
+              <b>/</b><span class="v">focus the search box</span>
+              <b>r</b><span class="v">refresh now</span>
+              <b>t</b><span class="v">toggle theme</span>
+              <b>Esc</b><span class="v">close dialog</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </main>
+  </div>
+</div>
+
+<div class="modal" id="modal" role="dialog" aria-modal="true">
+  <div class="box">
+    <div class="hd"><h3 id="modal-title">Details</h3><button class="close" id="modal-close">✕ Close</button></div>
+    <div class="bd" id="modal-body"></div>
+  </div>
+</div>
+<div class="toast-wrap" id="toasts"></div>
 
 <script>
-const map = L.map('map').setView([30, 0], 2);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom: 18}).addTo(map);
+"use strict";
+const $  = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => Array.from(el.querySelectorAll(s));
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const num = (n) => Number(n ?? 0).toLocaleString("en-US");
+const SEV = { critical:"#f85149", high:"#f0883e", medium:"#d29922", low:"#3fb950", info:"#8b949e" };
+const SEV_ORDER = ["critical","high","medium","low","info"];
 
-function esc(s){ return (s||'').toString().replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+const state = {
+  view: "overview",
+  data: null,
+  feed: [],
+  seen: new Set(),
+  liveSev: new Set(SEV_ORDER),
+  liveQ: "",
+  livePaused: false,
+  reveal: false,
+  timer: null,
+  rate: Number(localStorage.getItem("cg_rate") || 5),
+  ok: false,
+  lastOk: 0,
+  events: [],
+};
 
-function sevBadge(s){
-  const cls = (s||'info').toLowerCase();
-  return `<span class="badge b-${['critical','high','medium','low'].includes(cls)?cls:'info'}">${esc(cls)}</span>`;
+function toast(msg, bad) {
+  const el = document.createElement("div");
+  el.className = "toast" + (bad ? " bad" : "");
+  el.textContent = msg;
+  $("#toasts").appendChild(el);
+  setTimeout(() => el.remove(), 4200);
 }
 
-document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
-  document.querySelectorAll('nav button').forEach(x => x.classList.remove('active'));
-  document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
-  b.classList.add('active');
-  document.getElementById('tab-' + b.dataset.tab).classList.add('active');
+async function api(path, opts) {
+  const r = await fetch(path, Object.assign({ cache: "no-store" }, opts || {}));
+  if (!r.ok) {
+    let detail = "";
+    try { detail = (await r.json()).error || ""; } catch (e) {}
+    throw new Error(detail || ("HTTP " + r.status));
+  }
+  return r.json();
+}
+
+const post = (path, body) => api(path, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body || {}),
 });
 
-function renderTimeline(series){
-  const el = document.getElementById('timeline');
-  if(!series.length){ el.innerHTML='<span class="mut">No data</span>'; return; }
-  const max = Math.max(...series.map(x=>x[1]), 1);
-  el.innerHTML = series.map(([h,n]) =>
-    `<div class="tl-bar" style="height:${Math.max(4, Math.round(n/max*100))}%" title="${esc(h)}: ${n}"></div>`).join('');
+/* ---------------- theme + clock ---------------- */
+function applyTheme(t) {
+  document.documentElement.dataset.theme = t;
+  localStorage.setItem("cg_theme", t);
+  $("#theme").textContent = t === "dark" ? "🌙" : "☀";
+}
+applyTheme(localStorage.getItem("cg_theme") || "dark");
+$("#theme").onclick = () => applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+
+function tickClock() {
+  const d = new Date();
+  $("#clock").textContent = d.toLocaleDateString(undefined, { month:"short", day:"2-digit" }) +
+    " · " + d.toLocaleTimeString();
+}
+tickClock(); setInterval(tickClock, 1000);
+
+/* ---------------- icons per view ---------------- */
+const MODE_ICON = { running:"✅", paused:"⏸", stopped:"⏹", starting:"⏳", restarting:"🔄", unknown:"❓" };
+const MODE_COLOR = { running:"var(--ok)", paused:"var(--warn)", stopped:"var(--bad)",
+  starting:"var(--acc2)", restarting:"var(--acc2)", unknown:"var(--mut)" };
+
+/* ---------------- routing ---------------- */
+const TITLES = {
+  overview:"Overview", live:"Live feed", events:"Events", control:"Control",
+  creds:"Credentials", sessions:"Logon sessions", keys:"Keystrokes", files:"Files",
+  secrets:"Secrets & tokens", procs:"Processes", usb:"Drives / USB", net:"Network",
+  clip:"Clipboard", cleanup:"Cleanup", about:"About",
+};
+const LOADERS = {
+  events: loadEvents, creds: loadCreds, sessions: loadSessions, keys: loadKeys,
+  files: loadFiles, secrets: loadSecrets, procs: loadProcs, usb: loadUsb,
+  net: loadNet, clip: loadClip,
+};
+
+function go(view, push) {
+  if (!TITLES[view]) view = "overview";
+  state.view = view;
+  $$(".view").forEach(v => v.classList.toggle("on", v.dataset.view === view));
+  $$("#nav a").forEach(a => a.classList.toggle("on", a.dataset.v === view));
+  $("#page-title").textContent = TITLES[view];
+  if (push !== false) history.replaceState(null, "", "#" + view);
+  $("#sidebar").classList.remove("open");
+  if (view === "overview") setTimeout(() => { if (map) map.invalidateSize(); }, 60);
+  if (LOADERS[view]) LOADERS[view]();
+  if (view === "control") paintControl();
+}
+$$("#nav a").forEach(a => a.addEventListener("click", (e) => { e.preventDefault(); go(a.dataset.v); }));
+window.addEventListener("hashchange", () => go((location.hash || "#overview").slice(1), false));
+
+/* ---------------- severity helpers ---------------- */
+function sevBadge(s) {
+  const k = String(s || "info").toLowerCase();
+  return `<span class="badge b-${SEV_ORDER.includes(k) ? k : "info"}">${esc(k)}</span>`;
+}
+function sevMap(list) {
+  const m = {};
+  (list || []).forEach(([k, n]) => { m[k] = n; });
+  return m;
 }
 
-function renderCategories(cats){
-  const el = document.getElementById('categories');
-  if(!cats.length){ el.innerHTML='<span class="mut">No data</span>'; return; }
-  const total = cats.reduce((a,[,n])=>a+n,0);
-  el.innerHTML = cats.map(([c,n]) => {
-    const pct = total? Math.round(n/total*100):0;
-    return `<div style="display:flex;align-items:center;gap:10px;margin:6px 0">
-      <span style="width:150px" class="mut">${esc(c)}</span>
-      <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%"></div></div>
-      <span style="width:45px;text-align:right">${n}</span></div>`;
-  }).join('');
+/* ---------------- overview ---------------- */
+function renderKpis(d) {
+  const st = d.stats, c = d.counts, ctl = d.control;
+  const sev = sevMap(st.severities);
+  const crit = (sev.critical || 0) + (sev.high || 0);
+  $("#k-events").textContent = num(st.total);
+  $("#k-critical").textContent = num(crit);
+  $("#k-crit-h").textContent = num(sev.critical || 0) + " critical · " + num(sev.high || 0) + " high";
+  $("#k-creds").textContent = num(st.creds);
+  $("#k-monitors").textContent = (ctl.monitors_running ?? 0) + "/" + (ctl.monitors_total ?? 0);
+  $("#k-uptime").textContent = humanUptime(ctl.uptime_seconds);
+  $("#k-mode").textContent = String(ctl.mode || "?").toUpperCase();
+  $("#k-blocked").textContent = num((d.blocked || []).length);
+  $("#k-mode").style.color = MODE_COLOR[ctl.mode] || "var(--mut)";
 }
 
-function renderTopIps(ips){
-  document.getElementById('top-ip-count').textContent = `(${ips.length} sources)`;
-  document.getElementById('top-ips').innerHTML = ips.map(r => `
-    <tr><td class="ip" data-ip="${esc(r.src_ip)}">${esc(r.src_ip)}</td>
-    <td>${esc(r.country||'-')}</td><td>${esc(r.city||'-')}</td><td>${r.n}</td></tr>`).join('');
-  document.querySelectorAll('#top-ips .ip').forEach(td => td.onclick = () => drill(td.dataset.ip));
+function humanUptime(s) {
+  if (s === null || s === undefined) return "–";
+  s = Math.max(0, Number(s) | 0);
+  const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (d) return d + "d " + h + "h";
+  if (h) return h + "h " + m + "m";
+  return m + "m";
 }
 
-function renderCreds(creds){
-  document.getElementById('creds').innerHTML = creds.length ? creds.map(c => `
-    <tr><td class="mut">${esc(c.ts)}</td><td>${esc(c.src_ip)}</td>
-    <td class="mono">${esc(c.username)} / ${esc(c.password)}</td><td>${esc(c.service)}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="mut">No credentials captured yet</td></tr>';
-}
-
-function renderEvents(events){
-  document.getElementById('events').innerHTML = events.length ? events.map(e => `
-    <tr><td class="mut">${e.id}</td><td class="mut">${esc(e.ts)}</td>
-    <td>${esc(e.category)}</td><td>${sevBadge(e.severity)}</td>
-    <td class="ip" data-ip="${esc(e.src_ip)}" style="cursor:pointer;color:var(--acc)">${esc(e.src_ip||'-')}</td>
-    <td>${esc(e.dst_port||'-')}</td></tr>`).join('')
-    : '<tr><td colspan="6" class="mut">No events yet</td></tr>';
-  document.querySelectorAll('#events .ip').forEach(td => td.onclick = () => drill(td.dataset.ip));
-}
-
-function renderMap(geo){
-  const marks = geo.filter(g => g.country || g.city);
-  marks.forEach(g => {
-    const key = g.country || g.city;
-    if(!key) return;
-    fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${encodeURIComponent(key)}`)
-      .then(r => r.json()).then(res => {
-        if(res.length){
-          const [lat, lon] = [parseFloat(res[0].lat), parseFloat(res[0].lon)];
-          L.marker([lat, lon]).addTo(map).bindPopup(
-            `<b>${esc(g.src_ip)}</b><br>${esc(g.city||'')} ${esc(g.country||'')}<br>${g.n} events`);
-        }
-      }).catch(()=>{});
+function renderActivity(series) {
+  const svg = $("#chart-activity");
+  const W = 720, H = 200, P = 26;
+  if (!series || !series.length) {
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" text-anchor="middle" class="axis">no events in the last 24h</text>`;
+    $("#chart-peak").textContent = "peak –";
+    return;
+  }
+  const vals = series.map(x => Number(x[1]) || 0);
+  const max = Math.max.apply(null, vals.concat([1]));
+  const n = series.length;
+  const X = i => P + (W - 2 * P) * (n === 1 ? 0.5 : i / (n - 1));
+  const Y = v => (H - P) - (H - 2 * P) * (v / max);
+  const line = series.map((d, i) => `${i ? "L" : "M"}${X(i).toFixed(1)},${Y(vals[i]).toFixed(1)}`).join(" ");
+  const area = `${line} L${X(n - 1).toFixed(1)},${H - P} L${X(0).toFixed(1)},${H - P} Z`;
+  let grid = "";
+  for (let g = 0; g <= 4; g++) {
+    const y = P + (H - 2 * P) * g / 4;
+    const v = Math.round(max * (1 - g / 4));
+    grid += `<line x1="${P}" y1="${y}" x2="${W - P}" y2="${y}"></line>`;
+    grid += `<text x="4" y="${y + 3}" class="axis">${v}</text>`;
+  }
+  let labels = "", dots = "";
+  const step = Math.max(1, Math.ceil(n / 8));
+  series.forEach((d, i) => {
+    if (i % step === 0 || i === n - 1) {
+      labels += `<text x="${X(i)}" y="${H - 6}" text-anchor="middle" class="axis">${esc(String(d[0] || "").slice(11, 16))}</text>`;
+    }
+    dots += `<circle class="dot" cx="${X(i).toFixed(1)}" cy="${Y(vals[i]).toFixed(1)}" r="2.4"><title>${esc(d[0])} — ${vals[i]} events</title></circle>`;
   });
+  svg.innerHTML = `
+    <defs><linearGradient id="ag" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity=".34"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </linearGradient></defs>
+    <g class="grid">${grid}</g>
+    <path d="${area}" fill="url(#ag)"></path>
+    <path class="ln" d="${line}"></path>
+    ${dots}${labels}`;
+  const peak = Math.max.apply(null, vals);
+  const peakHour = series[vals.indexOf(peak)];
+  $("#chart-peak").textContent = "peak " + peak + " · " + String(peakHour[0] || "").slice(11, 16);
 }
 
-function renderSessions(d){
-  document.getElementById('sess-count').textContent = `(total ${d.total}, ${d.failed.length} failed)`;
-  document.getElementById('sessions').innerHTML = d.sessions.length ? d.sessions.map(s => `
-    <tr><td class="mut">${esc(s.ts)}</td>
-    <td>${s.status === 'success' ? '<span class="badge b-low">success</span>' : '<span class="badge b-fail">FAILED</span>'}</td>
-    <td class="mono">${esc(s.username)}</td>
-    <td class="mono">${esc(s.source_ip||'-')}</td>
-    <td>${esc(s.logon_type||'-')}</td></tr>`).join('')
-    : '<tr><td colspan="5" class="mut">No sessions yet (needs admin to read Security log)</td></tr>';
+function renderDonut(severities) {
+  const m = sevMap(severities);
+  const total = SEV_ORDER.reduce((a, k) => a + (m[k] || 0), 0);
+  const R = 52, C = 2 * Math.PI * R;
+  let off = 0, arcs = "";
+  if (total === 0) {
+    arcs = `<circle cx="75" cy="75" r="${R}" fill="none" stroke="var(--line)" stroke-width="16"></circle>`;
+  } else {
+    SEV_ORDER.forEach(k => {
+      const v = m[k] || 0;
+      if (!v) return;
+      const len = C * v / total;
+      arcs += `<circle cx="75" cy="75" r="${R}" fill="none" stroke="${SEV[k]}" stroke-width="16"
+        stroke-dasharray="${len.toFixed(2)} ${(C - len).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}"
+        transform="rotate(-90 75 75)"><title>${k}: ${v}</title></circle>`;
+      off += len;
+    });
+  }
+  $("#donut").innerHTML = arcs +
+    `<text x="75" y="72" text-anchor="middle" style="fill:var(--txt);font-size:20px;font-weight:650">${num(total)}</text>` +
+    `<text x="75" y="90" text-anchor="middle" style="fill:var(--mut);font-size:9px;letter-spacing:.8px">EVENTS 24H</text>`;
+  $("#sev-legend").innerHTML = SEV_ORDER.map(k => `
+    <div class="row"><span class="sw" style="background:${SEV[k]}"></span>
+      <span>${k}</span><span class="n">${num(m[k] || 0)}</span></div>`).join("");
 }
 
-function renderKeys(d){
-  document.getElementById('keys-count').textContent = `(total ${d.total})`;
-  document.getElementById('keys').innerHTML = d.entries.length ? d.entries.map(k => `
-    <tr><td class="mut">${esc(k.ts)}</td><td>${esc(k.window)}</td>
-    <td class="mono">${esc(k.keys)}</td></tr>`).join('')
-    : '<tr><td colspan="3" class="mut">No keystrokes yet</td></tr>';
+function renderCategories(cats) {
+  const el = $("#categories");
+  if (!cats || !cats.length) { el.innerHTML = '<span class="mut">No events in the last 24h</span>'; return; }
+  const rows = cats.slice(0, 9);
+  const max = Math.max.apply(null, rows.map(r => Number(r[1]) || 1));
+  el.innerHTML = rows.map(([name, n]) => {
+    const pct = Math.round(100 * (Number(n) || 0) / max);
+    return `<div class="row"><span class="clip" title="${esc(name)}">${esc(name)}</span>
+      <div class="track"><div class="fill" style="width:${Math.max(2, pct)}%"></div></div>
+      <span class="n">${num(n)}</span></div>`;
+  }).join("");
 }
 
-function renderFiles(d){
-  document.getElementById('files-count').textContent = `(total ${d.total})`;
-  document.getElementById('files').innerHTML = d.entries.length ? d.entries.map(f => `
-    <tr><td class="mut">${esc(f.ts)}</td>
-    <td><span class="badge b-file">${esc(f.action)}</span></td>
-    <td class="mono">${esc(f.path)}</td></tr>`).join('')
-    : '<tr><td colspan="3" class="mut">No file events yet</td></tr>';
+function renderTopIps(ips, geo) {
+  const meta = {};
+  (geo || []).forEach(g => { meta[g.src_ip] = g; });
+  $("#top-ip-count").textContent = (ips || []).length + " sources · 24h";
+  const body = $("#top-ips");
+  if (!ips || !ips.length) { body.innerHTML = '<tr><td colspan="4" class="empty">No attacker traffic in the last 24h</td></tr>'; return; }
+  body.innerHTML = ips.map(r => {
+    const m = meta[r.src_ip] || {};
+    return `<tr><td><span class="ip-link" data-ip="${esc(r.src_ip)}">${esc(r.src_ip)}</span></td>
+      <td>${esc(m.country || "–")}</td><td>${esc(m.city || "–")}</td>
+      <td class="num">${num(r.n)}</td></tr>`;
+  }).join("");
+  $$("#top-ips .ip-link").forEach(el => el.onclick = () => openIp(el.dataset.ip));
 }
 
-function renderSecrets(d){
-  document.getElementById('secrets-count').textContent = `(total ${d.total})`;
-  document.getElementById('secrets').innerHTML = d.entries.length ? d.entries.map(s => `
-    <tr><td class="mut">${esc(s.ts)}</td>
-    <td><span class="badge b-secret">${esc(s.kind)}</span></td>
-    <td class="mono">${esc(s.value)}</td>
-    <td class="mono mut">${esc(s.path)}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="mut">No secrets found yet</td></tr>';
+/* --- offline country centroids (no external geocoder) --- */
+const GEO = {
+  "United States":[39.8,-98.6],"Canada":[56.1,-106.3],"Mexico":[23.6,-102.5],"Brazil":[-14.2,-51.9],
+  "Argentina":[-38.4,-63.6],"Chile":[-35.7,-71.5],"Colombia":[4.6,-74.3],"Peru":[-9.2,-75.0],
+  "Venezuela":[6.4,-66.6],"United Kingdom":[54.2,-3.4],"Ireland":[53.4,-8.2],"France":[46.2,2.2],
+  "Germany":[51.2,10.4],"Netherlands":[52.1,5.3],"Belgium":[50.5,4.5],"Switzerland":[46.8,8.2],
+  "Austria":[47.5,14.6],"Italy":[41.9,12.6],"Spain":[40.5,-3.7],"Portugal":[39.4,-8.2],
+  "Poland":[51.9,19.1],"Czechia":[49.8,15.5],"Czech Republic":[49.8,15.5],"Slovakia":[48.7,19.7],
+  "Hungary":[47.2,19.5],"Romania":[45.9,24.9],"Bulgaria":[42.7,25.5],"Greece":[39.1,21.8],
+  "Sweden":[60.1,18.6],"Norway":[60.5,8.5],"Finland":[61.9,25.7],"Denmark":[56.3,9.5],
+  "Estonia":[58.6,25.0],"Latvia":[56.9,24.6],"Lithuania":[55.2,23.9],"Ukraine":[48.4,31.2],
+  "Belarus":[53.7,27.9],"Russia":[61.5,105.3],"Turkey":[39.0,35.2],"Iran":[32.4,53.7],
+  "Saudi Arabia":[23.9,45.1],"United Arab Emirates":[23.4,53.8],"Israel":[31.0,34.9],
+  "Egypt":[26.8,30.8],"Nigeria":[9.1,8.7],"South Africa":[-30.6,22.9],"Kenya":[-0.0,37.9],
+  "Morocco":[31.8,-7.1],"Algeria":[28.0,1.7],"Tunisia":[33.9,9.5],"China":[35.9,104.2],
+  "Hong Kong":[22.3,114.2],"Taiwan":[23.7,121.0],"Japan":[36.2,138.3],"South Korea":[35.9,127.8],
+  "Korea":[35.9,127.8],"Singapore":[1.35,103.8],"Malaysia":[4.2,101.9],"Thailand":[15.9,100.9],
+  "Vietnam":[14.1,108.3],"Philippines":[12.9,121.8],"Indonesia":[-0.8,113.9],"India":[20.6,79.0],
+  "Pakistan":[30.4,69.3],"Bangladesh":[23.7,90.4],"Sri Lanka":[7.9,80.8],"Nepal":[28.4,84.1],
+  "Kazakhstan":[48.0,66.9],"Moldova":[47.4,28.4],"Serbia":[44.0,21.0],"Croatia":[45.1,15.2],
+  "Slovenia":[46.2,14.8],"Australia":[-25.3,133.8],"New Zealand":[-40.9,174.9],
+};
+let map = null, markers = [];
+function jitter(ip) {
+  let h = 0;
+  for (let i = 0; i < String(ip).length; i++) h = (h * 31 + String(ip).charCodeAt(i)) >>> 0;
+  return [((h % 200) / 100 - 1) * 1.8, (((h >> 8) % 200) / 100 - 1) * 1.8];
 }
-
-function renderProcs(d){
-  document.getElementById('procs-count').textContent = `(total ${d.total})`;
-  document.getElementById('procs').innerHTML = d.entries.length ? d.entries.map(p => `
-    <tr><td class="mut">${esc(p.ts)}</td>
-    <td><span class="badge ${p.event_type==='started'?'b-ok':'b-file'}">${p.event_type==='started'?'OPENED':'CLOSED'}</span></td>
-    <td class="mono">${esc(p.name)}</td>
-    <td class="mut">${esc(String(p.pid))}</td>
-    <td class="mut">${esc(p.username||'')}</td>
-    <td class="mono mut">${esc(p.path)}</td></tr>`).join('')
-    : '<tr><td colspan="6" class="mut">No process events yet</td></tr>';
+function initMap() {
+  if (map || !window.L) return;
+  map = L.map("map", { worldCopyJump: true, scrollWheelZoom: false }).setView([25, 10], 2);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 12, attribution: "&copy; OpenStreetMap",
+  }).addTo(map);
 }
-
-function renderUsb(d){
-  document.getElementById('usb-count').textContent = `(total ${d.total})`;
-  document.getElementById('usb').innerHTML = d.entries.length ? d.entries.map(u => `
-    <tr><td class="mut">${esc(u.ts)}</td>
-    <td><span class="badge ${u.event_type==='connected'?'b-secret':u.event_type==='executed'?'b-fail':'b-low'}">${esc(u.event_type.toUpperCase())}</span></td>
-    <td class="mono">${esc(u.drive)}</td>
-    <td class="mono mut">${esc(u.details)}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="mut">No drive events yet</td></tr>';
-}
-
-async function renderEmbeds(){
-  try{
-    const r = await fetch('/api/embed/verify');
-    const d = await r.json();
-    document.getElementById('embeds').innerHTML = d.results.length ? d.results.map(s => `
-      <tr><td>${esc(s[0])}</td><td class="mono">${esc(s[1])}</td>
-      <td><span class="badge ${s[2]==='intact'?'b-low':'b-fail'}">${esc(s[2])}</span></td>
-      <td class="mono mut">${esc(s[3])}</td></tr>`).join('')
-      : '<tr><td colspan="4" class="mut">No embedded tokens</td></tr>';
-  }catch(e){}
-}
-
-async function drill(ip){
-  const r = await fetch('/api/ip/' + encodeURIComponent(ip));
-  const d = await r.json();
-  const el = document.getElementById('drill');
-  el.innerHTML = `<div class="card">
-    <p class="section-title">IP: ${esc(ip)} <span class="mut">${esc((d.meta||{}).country||'')} ${esc((d.meta||{}).city||'')}</span></p>
-    ${d.events.map(e => `<div class="dl-row">
-      <div class="head"><span>${sevBadge(e.severity)} <b>${esc(e.category)}</b></span>
-      <span class="mut">${esc(e.ts)} dst:${esc(e.dst_port||'-')}</span></div>
-      <div class="mono mut">${esc(JSON.stringify(JSON.parse(e.raw_json||'{}').logdata||{}))}</div></div>`).join('') || '<span class="mut">No events</span>'}
-  </div>`;
-  document.getElementById('tab-events').scrollIntoView({behavior:'smooth'});
-}
-
-async function runCleanupScan(){
-  const minutes = document.getElementById('cl-min').value || 120;
-  const r = await fetch('/api/cleanup/scan?minutes=' + encodeURIComponent(minutes));
-  const d = await r.json();
-  document.getElementById('cleanup-rows').innerHTML = d.items.length ? d.items.map(it => `
-    <tr><td><input type="checkbox" class="cl-chk" value="${esc(it.path)}"></td>
-    <td class="mono">${esc(it.path)}</td><td>${it.size}</td><td class="mut">${esc(it.mtime)}</td></tr>`).join('')
-    : '<tr><td colspan="4" class="mut">Nothing found in that window</td></tr>';
-  document.getElementById('cleanup-msg').textContent = `${d.items.length} suspicious file(s) found`;
-}
-
-async function deleteSelected(){
-  const paths = [...document.querySelectorAll('.cl-chk:checked')].map(x => x.value);
-  if(!paths.length){ alert('Select files first'); return; }
-  if(!confirm('Delete ' + paths.length + ' file(s)?')) return;
-  const r = await fetch('/api/cleanup/delete', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({paths})
+function renderMap(geo) {
+  initMap();
+  const note = $("#map-note");
+  if (!map) { note.textContent = "Map library unavailable (offline) — geodata still in the table."; return; }
+  markers.forEach(m => map.removeLayer(m));
+  markers = [];
+  const points = (geo || []).map(g => {
+    const c = GEO[g.country];
+    if (!c) return null;
+    const j = jitter(g.src_ip);
+    return { g, lat: c[0] + j[0], lon: c[1] + j[1] };
+  }).filter(Boolean);
+  points.forEach(({ g, lat, lon }) => {
+    const r = 4 + Math.min(7, Math.log2((Number(g.n) || 1) + 1));
+    const m = L.circleMarker([lat, lon], {
+      radius: r, color: "#2dd4bf", weight: 1.4, fillColor: "#2dd4bf", fillOpacity: 0.3,
+    }).addTo(map);
+    m.bindPopup(`<b>${esc(g.src_ip)}</b><br>${esc(g.country || "")} ${esc(g.city || "")}<br>
+      <span style="color:#8896a8">${num(g.n)} events · 24h</span>`);
+    markers.push(m);
   });
-  const d = await r.json();
-  document.getElementById('cleanup-msg').textContent =
-    `Removed: ${d.removed.length}  Failed: ${d.failed.length}`;
-  runCleanupScan();
+  note.textContent = points.length
+    ? points.length + " source" + (points.length === 1 ? "" : "s") + " plotted (country-level, offline centroid table)"
+    : "No geolocated traffic in the last 24h.";
 }
 
-document.getElementById('btn-test-alert').addEventListener('click', async () => {
-  const b = document.getElementById('btn-test-alert');
-  b.disabled = true; b.textContent = '...sending';
-  try { const r = await fetch('/api/test_alert', {method:'POST'}); const d = await r.json();
-    b.textContent = d.ok ? '\u2705 sent' : '\u274c failed';
-  } catch(e) { b.textContent = '\u274c failed'; }
-  setTimeout(() => { b.textContent = '\U0001f514 Test'; b.disabled = false; }, 2500);
+function renderSystem(d) {
+  const ctl = d.control, night = d.night || {};
+  const rows = [
+    ["Mode", `<span style="color:${MODE_COLOR[ctl.mode] || "var(--mut)"};font-weight:600">${esc(String(ctl.mode || "?").toUpperCase())}</span>`],
+    ["Uptime", esc(humanUptime(ctl.uptime_seconds))],
+    ["Since", esc(ctl.since || "–")],
+    ["Monitors", `${ctl.monitors_running ?? 0} / ${ctl.monitors_total ?? 0} running`],
+    ["Dashboard", ctl.dashboard ? "online" : "offline"],
+    ["Night mode", night.enabled ? (night.active ? `active · +1 severity until ${esc(night.end)}` : `armed ${esc(night.start)}–${esc(night.end)}`) : "disabled"],
+    ["Muted categories", (d.muted || []).length ? esc(d.muted.join(", ")) : "none"],
+    ["Blocked IPs", num((d.blocked || []).length)],
+    ["First event", esc(d.stats.first_seen || "–")],
+  ];
+  $("#sys-kv").innerHTML = rows.map(([k, v]) => `<b>${k}</b><span class="v">${v}</span>`).join("");
+  const nightPill = $("#night-pill");
+  nightPill.style.display = night.active ? "inline-flex" : "none";
+}
+
+function paintShell(d) {
+  const ctl = d.control || {};
+  const mode = String(ctl.mode || "unknown").toLowerCase();
+  $("#side-mode").textContent = mode + (ctl.dashboard ? " · dashboard up" : " · dashboard down");
+  $("#side-pill").className = "pill " + (ctl.dashboard ? "live" : "dead");
+  $("#nav-events").textContent = num(d.counts ? d.counts.events : 0);
+  $("#nav-live").textContent = String(state.feed.length);
+}
+
+function renderOverview(d) {
+  state.data = d;
+  renderKpis(d);
+  renderActivity(d.stats.timeline);
+  renderDonut(d.stats.severities);
+  renderCategories(d.stats.categories);
+  renderTopIps(d.stats.top_ips, d.stats.geo);
+  renderMap(d.stats.geo);
+  renderSystem(d);
+  paintShell(d);
+  paintControl();
+  addEvents(d.events || []);
+}
+
+/* ---------------- live feed ---------------- */
+function addEvents(events) {
+  let added = 0;
+  events.slice().reverse().forEach(e => {
+    if (state.seen.has(e.id)) return;
+    state.seen.add(e.id);
+    state.feed.unshift(e);
+    added++;
+  });
+  if (added) {
+    state.feed = state.feed.slice(0, 300);
+    if (!state.livePaused) renderFeed(true);
+    $("#nav-live").textContent = String(state.feed.length);
+  }
+}
+function renderFeed(animate) {
+  const body = $("#feed");
+  const q = state.liveQ.toLowerCase();
+  const rows = state.feed.filter(e => {
+    const sev = String(e.severity || "info").toLowerCase();
+    if (!state.liveSev.has(sev)) return false;
+    if (!q) return true;
+    return (String(e.category || "") + " " + String(e.src_ip || "") + " " + String(e.dst_port || ""))
+      .toLowerCase().includes(q);
+  });
+  if (!rows.length) {
+    body.innerHTML = '<div class="empty">No matching events yet. New activity appears here automatically.</div>';
+    return;
+  }
+  body.innerHTML = rows.slice(0, 120).map((e, i) => `
+    <div class="it${animate && i < 3 ? " new" : ""}">
+      <span class="t">${esc(String(e.ts || "").slice(11) || e.ts || "")}</span>
+      ${sevBadge(e.severity)}
+      <span class="cat">${esc(e.category)}</span>
+      <span class="src">${e.src_ip ? `<span class="ip-link" data-ip="${esc(e.src_ip)}">${esc(e.src_ip)}</span>` : "local"}
+        ${e.dst_port ? ":" + esc(e.dst_port) : ""}</span>
+    </div>`).join("");
+  $$("#feed .ip-link").forEach(el => el.onclick = () => openIp(el.dataset.ip));
+}
+
+/* ---------------- generic table helper ---------------- */
+function fillTable(sel, rows, cols, emptyText) {
+  const body = $(sel);
+  if (!rows || !rows.length) {
+    body.innerHTML = `<tr><td colspan="${cols}" class="empty">${esc(emptyText)}</td></tr>`;
+    return;
+  }
+  body.innerHTML = rows;
+}
+
+/* ---------------- loaders ---------------- */
+async function loadEvents() {
+  try {
+    const rows = await api("/api/events");
+    state.events = rows;
+    paintEvents();
+  } catch (e) { fillTable("#ev-body", null, 6, "Dashboard unreachable"); }
+}
+function paintEvents() {
+  const q = $("#ev-q").value.trim().toLowerCase();
+  const sev = $("#ev-sev").value;
+  const rows = state.events.filter(e => {
+    if (sev && String(e.severity || "").toLowerCase() !== sev) return false;
+    if (!q) return true;
+    return (String(e.id) + " " + String(e.ts) + " " + String(e.category) + " " +
+      String(e.src_ip) + " " + String(e.dst_port)).toLowerCase().includes(q);
+  });
+  $("#ev-count").textContent = rows.length + " / " + state.events.length + " shown";
+  fillTable("#ev-body", rows.map(e => `<tr>
+      <td class="mut">${esc(e.id)}</td>
+      <td class="mut">${esc(e.ts)}</td>
+      <td>${esc(e.category)}</td>
+      <td>${sevBadge(e.severity)}</td>
+      <td>${e.src_ip ? `<span class="ip-link" data-ip="${esc(e.src_ip)}">${esc(e.src_ip)}</span>` : '<span class="mut">local</span>'}</td>
+      <td class="num">${esc(e.dst_port || "–")}</td></tr>`).join(""), 6, "No events yet");
+  $$("#ev-body .ip-link").forEach(el => el.onclick = () => openIp(el.dataset.ip));
+}
+
+async function loadCreds() {
+  try {
+    const rows = await api("/api/creds");
+    $("#cr-count").textContent = "· " + rows.length + " latest";
+    fillTable("#cr-body", rows.map(c => `<tr>
+      <td class="mut">${esc(c.ts)}</td>
+      <td><span class="ip-link" data-ip="${esc(c.src_ip)}">${esc(c.src_ip || "–")}</span></td>
+      <td class="mono">${esc(c.username || "–")}</td>
+      <td class="mono">${state.reveal ? esc(c.password || "") : "••••••••"}</td>
+      <td>${esc(c.service || "–")}</td></tr>`).join(""), 5, "No credentials captured yet");
+    $$("#cr-body .ip-link").forEach(el => el.onclick = () => openIp(el.dataset.ip));
+  } catch (e) { fillTable("#cr-body", null, 5, "Dashboard unreachable"); }
+}
+
+async function loadSessions() {
+  try {
+    const d = await api("/api/sessions");
+    $("#ss-total").textContent = num(d.total) + " total";
+    $("#ss-failed").textContent = (d.failed || []).reduce((a, x) => a + x[1], 0) + " failed · 24h";
+    fillTable("#ss-body", d.sessions.map(s => `<tr>
+      <td class="mut">${esc(s.ts)}</td>
+      <td>${s.status === "success" ? '<span class="badge b-low">success</span>' : '<span class="badge b-critical">failed</span>'}</td>
+      <td class="mono">${esc(s.username || "–")}</td>
+      <td class="mono">${esc(s.source_ip || "–")}</td>
+      <td class="num">${esc(s.logon_type ?? "–")}</td></tr>`).join(""), 5,
+      "No sessions yet — reading the Security log needs administrator rights");
+  } catch (e) { fillTable("#ss-body", null, 5, "Dashboard unreachable"); }
+}
+
+async function loadKeys() {
+  try {
+    const d = await api("/api/keys");
+    $("#ky-count").textContent = "· " + num(d.total) + " total";
+    fillTable("#ky-body", d.entries.map(k => `<tr>
+      <td class="mut">${esc(k.ts)}</td><td>${esc(k.window || "–")}</td>
+      <td class="mono clip">${esc(k.keys)}</td></tr>`).join(""), 3, "No keystrokes captured yet");
+  } catch (e) { fillTable("#ky-body", null, 3, "Dashboard unreachable"); }
+}
+
+async function loadFiles() {
+  try {
+    const d = await api("/api/files");
+    $("#fl-count").textContent = "· " + num(d.total) + " total";
+    fillTable("#fl-body", d.entries.map(f => `<tr>
+      <td class="mut">${esc(f.ts)}</td>
+      <td><span class="badge b-blk">${esc(f.action)}</span></td>
+      <td class="mono clip" title="${esc(f.path)}">${esc(f.path)}</td></tr>`).join(""), 3, "No file events yet");
+  } catch (e) { fillTable("#fl-body", null, 3, "Dashboard unreachable"); }
+}
+
+async function loadSecrets() {
+  try {
+    const d = await api("/api/secrets");
+    $("#sc-count").textContent = "· " + num(d.total) + " hits";
+    fillTable("#sc-body", d.entries.map(s => `<tr>
+      <td class="mut">${esc(s.ts)}</td>
+      <td><span class="badge b-high">${esc(s.kind)}</span></td>
+      <td class="mono clip" title="${esc(s.value)}">${esc(s.value)}</td>
+      <td class="mono clip mut" title="${esc(s.path)}">${esc(s.path)}</td></tr>`).join(""), 4, "No secrets found yet");
+  } catch (e) { fillTable("#sc-body", null, 4, "Dashboard unreachable"); }
+  try {
+    const d = await api("/api/embed/verify");
+    fillTable("#em-body", d.results.map(r => `<tr>
+      <td>${esc(r[0])}</td><td class="mono">${esc(r[1])}</td>
+      <td><span class="badge ${r[2] === "intact" ? "b-low" : "b-critical"}">${esc(r[2])}</span></td>
+      <td class="mono clip mut" title="${esc(r[3])}">${esc(r[3])}</td></tr>`).join(""), 4, "No embedded tokens");
+  } catch (e) { fillTable("#em-body", null, 4, "Embedded tokens unavailable"); }
+}
+
+async function loadProcs() {
+  try {
+    const d = await api("/api/processes");
+    $("#pr-count").textContent = "· " + num(d.total) + " total";
+    fillTable("#pr-body", d.entries.map(p => `<tr>
+      <td class="mut">${esc(p.ts)}</td>
+      <td><span class="badge ${p.event_type === "started" ? "b-low" : "b-blk"}">${esc(String(p.event_type || "").toUpperCase())}</span></td>
+      <td class="mono">${esc(p.name)}</td>
+      <td class="num mut">${esc(p.pid)}</td>
+      <td class="mut">${esc(p.username || "")}</td>
+      <td class="mono clip mut" title="${esc(p.path)}">${esc(p.path)}</td></tr>`).join(""), 6, "No process events yet");
+  } catch (e) { fillTable("#pr-body", null, 6, "Dashboard unreachable"); }
+}
+
+async function loadUsb() {
+  try {
+    const d = await api("/api/usb");
+    $("#us-count").textContent = "· " + num(d.total) + " total";
+    fillTable("#us-body", d.entries.map(u => {
+      const t = String(u.event_type || "").toLowerCase();
+      const cls = t === "connected" ? "b-high" : t === "executed" ? "b-critical" : "b-blk";
+      return `<tr><td class="mut">${esc(u.ts)}</td>
+        <td><span class="badge ${cls}">${esc(t.toUpperCase())}</span></td>
+        <td class="mono">${esc(u.drive)}</td>
+        <td class="mono clip mut" title="${esc(u.details)}">${esc(u.details)}</td></tr>`;
+    }).join(""), 4, "No drive events yet");
+  } catch (e) { fillTable("#us-body", null, 4, "Dashboard unreachable"); }
+}
+
+async function loadNet() {
+  try {
+    const d = await api("/api/net");
+    $("#nt-count").textContent = "· " + num(d.total) + " total";
+    fillTable("#nt-body", d.entries.map(n => `<tr>
+      <td class="mut">${esc(n.ts)}</td><td class="mono">${esc(n.name)}</td>
+      <td class="num mut">${esc(n.pid)}</td><td class="mono">${esc(n.remote)}</td>
+      <td class="mono clip mut" title="${esc(n.details)}">${esc(n.details)}</td></tr>`).join(""), 5, "No network events yet");
+  } catch (e) { fillTable("#nt-body", null, 5, "Dashboard unreachable"); }
+}
+
+async function loadClip() {
+  try {
+    const d = await api("/api/clipboard");
+    $("#cl-count").textContent = "· " + num(d.total) + " total";
+    fillTable("#cl-body", d.entries.map(c => `<tr>
+      <td class="mut">${esc(c.ts)}</td><td class="num">${esc(c.chars)}</td>
+      <td>${c.keyword ? `<span class="badge b-high">${esc(c.keyword)}</span>` : '<span class="mut">–</span>'}</td>
+      <td class="mono clip" title="${esc(c.preview)}">${esc(c.preview)}</td></tr>`).join(""), 4, "No clipboard events yet");
+  } catch (e) { fillTable("#cl-body", null, 4, "Dashboard unreachable"); }
+}
+
+/* ---------------- control view ---------------- */
+function paintControl() {
+  const d = state.data;
+  if (!d) return;
+  const ctl = d.control || {};
+  const mode = String(ctl.mode || "unknown").toLowerCase();
+  $("#ctl-ico").textContent = MODE_ICON[mode] || "❓";
+  $("#ctl-mode").textContent = mode.toUpperCase();
+  $("#ctl-mode").style.color = MODE_COLOR[mode] || "var(--txt)";
+  $("#ctl-reason").textContent = ctl.reason ? "reason: " + ctl.reason : "no pending action";
+  $("#ctl-up").textContent = humanUptime(ctl.uptime_seconds);
+  $("#ctl-mon").textContent = (ctl.monitors_running ?? 0) + "/" + (ctl.monitors_total ?? 0);
+  $("#ctl-pid").textContent = (ctl.pids && ctl.pids.length) ? ctl.pids.join(", ") : (ctl.state_pid || "–");
+
+  const mons = d.monitors || {};
+  $("#mon-sum").textContent = "· " + Object.values(mons).filter(m => m.status === "running").length + "/" + Object.keys(mons).length;
+  const label = {
+    lan:"LAN devices", downloads:"Downloads sentinel", cam:"Camera / mic", staging:"Staging detector",
+    browser:"Browser credentials", persist:"Persistence watchdog", theft:"Theft alarm",
+    evidence:"Evidence backup", procs:"Process monitor", usb:"USB monitor", net:"Network monitor",
+    clip:"Clipboard sensor", panic:"Panic idle", decoys:"Decoy watcher", decoys_scan:"Decoy scanner",
+    sessions:"Logon sessions", keys:"Keylogger", protect:"Folder watchdog",
+  };
+  $("#mon-grid").innerHTML = Object.keys(mons).sort().map(name => {
+    const st = mons[name].status || "?";
+    const on = st === "running";
+    return `<div class="mon"><span class="sw ${esc(st)}"></span>
+      <span class="nm" title="${esc(name)}">${esc(label[name] || name)}</span>
+      <span class="st ${esc(st)}">${esc(st)}</span>
+      <button class="tgl" data-mon="${esc(name)}" data-on="${on ? 0 : 1}">${on ? "pause" : "start"}</button></div>`;
+  }).join("");
+  $$("#mon-grid .tgl").forEach(b => b.onclick = () => toggleMonitor(b.dataset.mon, b.dataset.on === "1"));
+
+  const muted = d.muted || [];
+  $("#mute-list").innerHTML = muted.length
+    ? muted.map(m => `<span class="chip on" style="margin:3px">🔇 ${esc(m)}
+        <a href="#" data-unmute="${esc(m)}" style="margin-left:6px;color:var(--bad)">✕</a></span>`).join("")
+    : '<span class="mut">nothing muted</span>';
+  $$("#mute-list [data-unmute]").forEach(a => a.onclick = (e) => {
+    e.preventDefault(); unmute(a.dataset.unmute);
+  });
+
+  const blocked = d.blocked || [];
+  $("#blk-count").textContent = "· " + blocked.length;
+  fillTable("#blk-body", blocked.map(ip => `<tr><td class="mono">${esc(ip)}</td>
+    <td style="text-align:right"><button class="btn ghost" style="padding:2px 9px" data-unblock="${esc(ip)}">unblock</button></td></tr>`).join(""),
+    2, "No firewall rules");
+  $$("#blk-body [data-unblock]").forEach(b => b.onclick = () => unblock(b.dataset.unblock));
+}
+
+async function toggleMonitor(name, on) {
+  try {
+    await post("/api/monitors/" + encodeURIComponent(name), { enabled: on });
+    toast((on ? "started " : "paused ") + name);
+    await refreshOverview();
+  } catch (e) { toast("monitor: " + e.message, true); }
+}
+
+async function controlAction(act) {
+  const names = { pause:"Sleep", resume:"Resume", restart:"Restart", stop:"Stop" };
+  if (act === "stop" && !confirm("Stop CanaryGuard completely?\n\nThis dashboard will go offline. Use Telegram /start or the desktop app to bring it back.")) return;
+  if (act === "restart" && !confirm("Restart the CanaryGuard service?")) return;
+  try {
+    toast(names[act] + " requested…");
+    await post("/api/control/" + act, { reason: "dashboard" });
+    toast(names[act] + " accepted");
+    setTimeout(refreshOverview, 1200);
+  } catch (e) { toast(names[act] + " failed: " + e.message, true); }
+}
+$$("[data-act]").forEach(b => b.onclick = () => controlAction(b.dataset.act));
+
+async function quick(action) {
+  if (action === "panic" && !confirm("Panic: lock the workstation and send an alert?")) return;
+  if (action === "shot") {
+    try {
+      const r = await fetch("/api/screenshot", { cache: "no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      const blob = await r.blob();
+      window.open(URL.createObjectURL(blob), "_blank", "noopener");
+    } catch (e) { toast("screenshot: " + e.message, true); }
+    return;
+  }
+  const map = { lock:"/api/lock", panic:"/api/panic", digest:"/api/digest", test:"/api/test_alert" };
+  try { await post(map[action]); toast(action + " sent ✓"); }
+  catch (e) { toast(action + ": " + e.message, true); }
+}
+$$("[data-quick]").forEach(b => b.onclick = () => quick(b.dataset.quick));
+
+$("#mute-add").onclick = async () => {
+  const cat = $("#mute-cat").value.trim();
+  if (!cat) return;
+  try { await post("/api/mute", { category: cat }); $("#mute-cat").value = ""; toast("muted " + cat); await refreshOverview(); }
+  catch (e) { toast("mute: " + e.message, true); }
+};
+$("#mute-all").onclick = async () => {
+  try { await post("/api/unmute", { all: true }); toast("all categories unmuted"); await refreshOverview(); }
+  catch (e) { toast("unmute: " + e.message, true); }
+};
+async function unmute(cat) {
+  try { await post("/api/unmute", { category: cat }); toast("unmuted " + cat); await refreshOverview(); }
+  catch (e) { toast("unmute: " + e.message, true); }
+}
+$("#blk-add").onclick = () => blockIp($("#blk-ip").value.trim());
+$("#blk-del").onclick = () => unblock($("#blk-ip").value.trim());
+async function blockIp(ip) {
+  if (!ip) return;
+  try { await post("/api/ipblock/block", { ip }); $("#blk-ip").value = ""; toast("blocked " + ip); await refreshOverview(); }
+  catch (e) { toast("block: " + e.message, true); }
+}
+async function unblock(ip) {
+  if (!ip) return;
+  try { await post("/api/ipblock/remove", { ip }); toast("unblocked " + ip); await refreshOverview(); }
+  catch (e) { toast("unblock: " + e.message, true); }
+}
+
+/* ---------------- cleanup ---------------- */
+$("#cl-scan").onclick = async () => {
+  const minutes = $("#cl-min").value || 120;
+  $("#cl-msg").textContent = "scanning…";
+  try {
+    const d = await api("/api/cleanup/scan?minutes=" + encodeURIComponent(minutes));
+    fillTable("#cl-body", d.items.map(it => `<tr>
+      <td><input type="checkbox" class="cl-chk" value="${esc(it.path)}"></td>
+      <td class="mono clip" title="${esc(it.path)}">${esc(it.path)}</td>
+      <td class="num">${esc(it.size)}</td><td class="mut">${esc(it.mtime)}</td></tr>`).join(""),
+      4, "Nothing suspicious in that window");
+    $("#cl-msg").textContent = d.items.length + " file(s) found";
+  } catch (e) { $("#cl-msg").textContent = "scan failed: " + e.message; }
+};
+$("#cl-all").onchange = (e) => $$(".cl-chk").forEach(c => { c.checked = e.target.checked; });
+$("#cl-del").onclick = async () => {
+  const paths = $$(".cl-chk:checked").map(x => x.value);
+  if (!paths.length) return toast("select files first", true);
+  if (!confirm("Delete " + paths.length + " file(s)? This cannot be undone.")) return;
+  try {
+    const d = await post("/api/cleanup/delete", { paths });
+    $("#cl-msg").textContent = "removed " + d.removed.length + " · failed " + d.failed.length;
+    $("#cl-scan").click();
+  } catch (e) { toast("delete: " + e.message, true); }
+};
+
+/* ---------------- modal ---------------- */
+$("#modal-close").onclick = () => $("#modal").classList.remove("on");
+$("#modal").onclick = (e) => { if (e.target.id === "modal") $("#modal").classList.remove("on"); };
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") $("#modal").classList.remove("on");
+});
+async function openIp(ip) {
+  const box = $("#modal");
+  $("#modal-title").textContent = "Source " + ip;
+  $("#modal-body").innerHTML = '<span class="mut">loading…</span>';
+  box.classList.add("on");
+  try {
+    const d = await api("/api/ip/" + encodeURIComponent(ip));
+    const meta = d.meta || {};
+    const head = `<div class="toolbar">
+      <span class="mono" style="font-size:14px">${esc(ip)}</span>
+      <span class="pill">${esc(meta.country || "unknown")} ${esc(meta.city || "")}</span>
+      ${meta.org ? `<span class="pill">${esc(meta.org)}</span>` : ""}
+      <span class="spacer"></span>
+      <button class="btn danger" id="modal-block">🚫 Block this IP</button></div>`;
+    const evs = (d.events || []).map(e => {
+      let extra = "";
+      try { extra = JSON.stringify((JSON.parse(e.raw_json || "{}").logdata) || {}); } catch (err) {}
+      return `<div class="ev"><div class="top">${sevBadge(e.severity)}
+        <b>${esc(e.category)}</b><span class="mut">${esc(e.ts)}</span>
+        <span class="mut">dst :${esc(e.dst_port || "–")}</span></div>
+        <pre>${esc(extra)}</pre></div>`;
+    }).join("") || '<span class="mut">No events</span>';
+    $("#modal-body").innerHTML = head + evs;
+    $("#modal-block").onclick = () => { blockIp(ip); box.classList.remove("on"); };
+  } catch (e) {
+    $("#modal-body").innerHTML = `<span class="mut">Failed: ${esc(e.message)}</span>`;
+  }
+}
+
+/* ---------------- refresh loop ---------------- */
+async function refreshOverview() {
+  try {
+    const d = await api("/api/overview");
+    state.ok = true; state.lastOk = Date.now();
+    renderOverview(d);
+    paintLive(true);
+  } catch (e) {
+    state.ok = false;
+    paintLive(false);
+  }
+}
+function paintLive(ok) {
+  const pill = $("#live-pill");
+  pill.className = "pill " + (ok ? "live" : "dead");
+  $("#live-text").textContent = ok ? "live · " + new Date().toLocaleTimeString() : "dashboard unreachable";
+  $("#side-pill").className = "pill " + (ok ? "live" : "dead");
+}
+
+function schedule() {
+  clearInterval(state.timer);
+  state.timer = setInterval(async () => {
+    if (document.hidden) return;
+    await refreshOverview();
+    if (LOADERS[state.view]) LOADERS[state.view]();
+  }, state.rate * 1000);
+}
+
+/* ---------------- wiring ---------------- */
+$("#rate").value = String(state.rate);
+$("#rate").onchange = (e) => {
+  state.rate = Number(e.target.value) || 5;
+  localStorage.setItem("cg_rate", String(state.rate));
+  schedule();
+};
+$("#burger").onclick = () => $("#sidebar").classList.toggle("open");
+$("#btn-test-alert").onclick = async (e) => {
+  const b = e.currentTarget;
+  b.disabled = true; b.textContent = "sending…";
+  try {
+    const d = await post("/api/test_alert");
+    b.textContent = d.ok ? "✓ sent" : "✗ failed";
+    toast("test alert: " + (d.ok ? "sent" : "failed"), !d.ok);
+  } catch (err) { b.textContent = "✗ failed"; toast("test alert failed: " + err.message, true); }
+  setTimeout(() => { b.textContent = "🔔 Test"; b.disabled = false; }, 2500);
+};
+
+$("#ev-q").oninput = paintEvents;
+$("#ev-sev").onchange = paintEvents;
+
+$$("#feed").length; // no-op guard
+
+$$("[data-sev]").forEach(chip => chip.onclick = () => {
+  const s = chip.dataset.sev;
+  if (state.liveSev.has(s)) { state.liveSev.delete(s); chip.classList.remove("on"); }
+  else { state.liveSev.add(s); chip.classList.add("on"); }
+  renderFeed(false);
+});
+$("#live-q").oninput = (e) => { state.liveQ = e.target.value; renderFeed(false); };
+$("#live-pause").onclick = (e) => {
+  state.livePaused = !state.livePaused;
+  e.currentTarget.textContent = state.livePaused ? "▶ Resume" : "⏸ Pause";
+  if (!state.livePaused) renderFeed(false);
+};
+$("#live-clear").onclick = () => { state.feed = []; renderFeed(false); $("#nav-live").textContent = "0"; };
+$("#cr-reveal").onclick = (e) => {
+  state.reveal = !state.reveal;
+  e.currentTarget.textContent = state.reveal ? "🙈 Hide passwords" : "👁 Reveal passwords";
+  loadCreds();
+};
+
+document.addEventListener("keydown", (e) => {
+  const tag = (e.target.tagName || "").toLowerCase();
+  const typing = tag === "input" || tag === "select" || tag === "textarea";
+  if (typing) return;
+  if (e.key === "/") { e.preventDefault(); const box = state.view === "events" ? $("#ev-q") : state.view === "live" ? $("#live-q") : null; if (box) box.focus(); }
+  else if (e.key === "r") refreshOverview();
+  else if (e.key === "t") $("#theme").click();
+  else if (/^[1-9]$/.test(e.key)) {
+    const order = ["overview","live","events","control","creds","sessions","keys","files","secrets"];
+    const v = order[Number(e.key) - 1];
+    if (v) go(v);
+  }
 });
 
-async function refresh(){
-  const r = await fetch('/api/stats'); const s = await r.json();
-  document.getElementById('c-total').textContent = s.total;
-  document.getElementById('c-creds').textContent = s.creds;
-  document.getElementById('c-top-ip').textContent = s.top_ips.length ? s.top_ips[0].src_ip : '-';
-  const crit = (s.severities.find(x=>x[0]==='critical')||[0,0])[1];
-  document.getElementById('c-critical').textContent = crit;
-  document.getElementById('updated').textContent = 'updated ' + new Date().toLocaleTimeString();
-  renderTimeline(s.timeline);
-  renderCategories(s.categories);
-  renderTopIps(s.top_ips);
-  if(!window._mapDrawn){ window._mapDrawn = true; renderMap(s.geo); }
-
-  const [ev, cr, ss, ks, fs, sc, pc, us] = await Promise.all([
-    (await fetch('/api/events')).json(),
-    (await fetch('/api/creds')).json(),
-    (await fetch('/api/sessions')).json(),
-    (await fetch('/api/keys')).json(),
-    (await fetch('/api/files')).json(),
-    (await fetch('/api/secrets')).json(),
-    (await fetch('/api/processes')).json(),
-    (await fetch('/api/usb')).json(),
-  ]);
-  renderEvents(ev);
-  renderCreds(cr);
-  renderSessions(ss);
-  renderKeys(ks);
-  renderFiles(fs);
-  renderSecrets(sc);
-  renderProcs(pc);
-  renderUsb(us);
-  renderEmbeds();
-  document.getElementById('c-sessions').textContent = ss.total;
-  document.getElementById('c-keys').textContent = ks.total;
-}
-
-refresh();
-setInterval(refresh, 5000);
+/* ---------------- boot ---------------- */
+const startView = (location.hash || "#overview").slice(1);
+go(TITLES[startView] ? startView : "overview", false);
+refreshOverview().then(() => { if (LOADERS[state.view]) LOADERS[state.view](); });
+schedule();
 </script>
 </body>
 </html>

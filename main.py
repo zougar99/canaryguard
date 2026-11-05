@@ -152,14 +152,12 @@ class _RuntimeControl:
         ctl.set_stop_flag(False, reason)
         ctl.write_state("restarting", reason)
         self._notify(f"\U0001f504 <b>CanaryGuard RESTARTING</b>\nreason: {reason or '-'}")
-        flags = 0x00000008 | 0x00000200 if IS_WINDOWS else 0  # DETACHED | NEW_GROUP
         try:
-            subprocess.Popen(
-                ["cmd.exe", "/c", "ping -n 4 127.0.0.1 >nul & schtasks /run /tn CanaryGuard"],
-                creationflags=flags,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            from canaryguard._winproc import detach
+
+            detach(["cmd.exe", "/c",
+                    "ping -n 4 127.0.0.1 >nul & schtasks /run /tn CanaryGuard"],
+                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as exc:
             self.logger(f"[control] restart spawn failed: {exc}")
         threading.Timer(1.2, self.stop_event.set).start()

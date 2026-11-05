@@ -1,9 +1,9 @@
-import os
 import threading
 import time
 from datetime import datetime
 
 from .config import get_store
+from ._winproc import run as _proc_run
 
 
 class IPBlocker:
@@ -45,11 +45,11 @@ class IPBlocker:
 
     def _block(self, ip, count):
         rule = f'{self.prefix}_{ip.replace(".", "_")}'
-        cmd = (
-            f'netsh advfirewall firewall add rule name="{rule}" '
-            f'dir=in action=block remoteip={ip} enable=yes'
-        )
-        ok = os.system(cmd) == 0
+        ok = _proc_run(["netsh", "advfirewall", "firewall", "add",
+                        "rule", f"name={rule}", "dir=in",
+                        "action=block", f"remoteip={ip}",
+                        "enable=yes"],
+                       capture_output=True, timeout=15).returncode == 0
         status = "BLOCKED" if ok else "BLOCK FAILED"
         self.logger(f"[ipblock] {ip} {status} ({count} fails)")
         self.store.insert_event(
@@ -77,7 +77,7 @@ class IPBlocker:
                 for ip in expired:
                     del self._blocked[ip]
                     rule = f'{self.prefix}_{ip.replace(".", "_")}'
-                    os.system(
-                        f'netsh advfirewall firewall delete rule name="{rule}"'
-                    )
+                    _proc_run(["netsh", "advfirewall", "firewall",
+                               "delete", "rule", f"name={rule}"],
+                              capture_output=True, timeout=15)
                     self.logger(f"[ipblock] rule removed for {ip}")

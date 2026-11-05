@@ -1,5 +1,5 @@
 import re
-import subprocess
+from ._winproc import run as _proc_run
 import threading
 import time
 from datetime import datetime
@@ -13,7 +13,7 @@ def _arp_entries():
     """Return {mac_upper: ip} from the local ARP table."""
     out = {}
     try:
-        res = subprocess.run(["arp", "-a"], capture_output=True, text=True, timeout=10)
+        res = _proc_run(["arp", "-a"], capture_output=True, text=True, timeout=10)
         for line in res.stdout.splitlines():
             m = _MAC_RE.search(line)
             if not m:

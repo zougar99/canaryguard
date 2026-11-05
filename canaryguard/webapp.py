@@ -3,8 +3,11 @@ import json
 import os
 import secrets as pysecrets
 import threading
+import time
+from datetime import datetime
 
-from flask import Flask, jsonify, redirect, render_template, request, session, url_for
+from flask import (Flask, Response, jsonify, redirect, render_template,
+                   request, session, stream_with_context, url_for)
 
 from .config import get_store
 
@@ -32,6 +35,8 @@ class DashboardServer:
         self.app.secret_key = config.get("dashboard", "secret_key", default=pysecrets.token_hex(32))
         self._username = config.get("dashboard", "username", default="admin")
         self._password = config.get("dashboard", "password", default=None)
+        self._blocked_cache = (0.0, [])
+        self._blocked_lock = threading.Lock()
         self._register_routes()
 
     def _auth_enabled(self):
@@ -112,6 +117,115 @@ class DashboardServer:
         except Exception:
             pass
 
+    def _night_state(self):
+        """Quiet-hours window used by the alert engine (UI banner)."""
+        cfg = self.config.section("alerts")
+        enabled = bool(cfg.get("night_escalation", False))
+        start = str(cfg.get("night_start", "23:00"))
+        end = str(cfg.get("night_end", "07:00"))
+        floor = str(cfg.get("night_floor", "high"))
+        now = datetime.now().strftime("%H:%M")
+        active = False
+        if enabled:
+            try:
+                if start <= end:
+                    active = start <= now < end
+                else:
+                    active = now >= start or now < end
+            except Exception:
+                active = False
+        return {"enabled": enabled, "active": active, "start": start,
+                "end": end, "floor": floor, "now": now}
+
+    def _muted_categories(self):
+        return sorted(str(m) for m in getattr(self.alerts, "muted", set())) if self.alerts else []
+
+    def _blocked_ips(self, ttl=20):
+        """Windows firewall rules created by the IP blocker, cached briefly.
+
+        ``netsh`` takes roughly a second, so never run it on every poll.
+        """
+        with self._blocked_lock:
+            stamp, cached = self._blocked_cache
+            if time.time() - stamp < ttl:
+                return cached
+        ips = []
+        try:
+            from ._winproc import run as _proc_run
+
+            out = _proc_run(
+                ["netsh", "advfirewall", "firewall", "show", "rule", "name=all"],
+                capture_output=True, text=True, timeout=15,
+            ).stdout
+            for chunk in out.split("Rule Name:"):
+                lines = [ln.strip() for ln in chunk.splitlines() if ln.strip()]
+                if not lines or not lines[0].startswith("CanaryBlock"):
+                    continue
+                for line in lines:
+                    if line.upper().startswith("REMOTEIP"):
+                        for part in line.split(":", 1)[1].replace("/", " ").split():
+                            ip = part.split("/")[0]
+                            if "." in ip:
+                                ips.append(ip)
+        except Exception:
+            ips = []
+        ips = sorted(set(ips))
+        with self._blocked_lock:
+            self._blocked_cache = (time.time(), ips)
+        return ips
+
+    def _overview_payload(self, events=15):
+        """One-shot payload shared by /api/overview and the SSE stream."""
+        from . import control as ctl
+
+        store = self.store
+        monitors = {}
+        running = 0
+        for name, mon in self.monitors.items():
+            status = self._mon_status(mon)
+            if status == "running":
+                running += 1
+            monitors[name] = {"status": status, "class": type(mon).__name__}
+
+        state = ctl.status()
+        if self.runtime is not None:
+            state["mode"] = self.runtime.mode
+        state["monitors_running"] = running
+        state["monitors_total"] = len(monitors)
+
+        return {
+            "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "stats": {
+                "total": store.total_events(),
+                "creds": store.total_creds(),
+                "categories": store.counts_by_category(),
+                "severities": store.counts_by_severity(),
+                "timeline": store.timeline(),
+                "top_ips": store.top_ips(),
+                "geo": store.geo_points(),
+                "first_seen": store.first_ts(),
+            },
+            "counts": {
+                "events": store.total_events(),
+                "creds": store.total_creds(),
+                "sessions": store.total_sessions(),
+                "keys": store.total_keystrokes(),
+                "files": store.total_file_events(),
+                "secrets": store.total_secret_hits(),
+                "procs": store.total_process_events(),
+                "usb": store.total_usb_events(),
+                "clip": store.total_clipboard_events(),
+                "net": store.total_net_events(),
+                "cam": store.total_cam_events(),
+            },
+            "monitors": monitors,
+            "control": state,
+            "events": store.recent_events(events),
+            "night": self._night_state(),
+            "muted": self._muted_categories(),
+            "blocked": self._blocked_ips(),
+        }
+
     def _register_routes(self):
         app = self.app
         app.before_request(self._before_request)
@@ -149,6 +263,46 @@ class DashboardServer:
         @app.route("/")
         def index():
             return render_template("index.html")
+
+        @app.route("/console")
+        def console():
+            """Full-screen NOC view fed by /api/stream (server-sent events)."""
+            return render_template("console.html")
+
+        @app.route("/api/overview")
+        def api_overview():
+            return jsonify(self._overview_payload())
+
+        @app.route("/api/stream")
+        def api_stream():
+            """Server-sent events: one JSON tick every few seconds."""
+            try:
+                interval = float(request.args.get("interval", 3))
+            except ValueError:
+                interval = 3.0
+            interval = min(15.0, max(1.0, interval))
+
+            def generate():
+                while True:
+                    try:
+                        payload = self._overview_payload()
+                    except Exception as exc:  # keep the stream alive
+                        payload = {"error": str(exc),
+                                   "server_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+                    yield "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+                    time.sleep(interval)
+
+            headers = {
+                "Cache-Control": "no-cache, no-transform",
+                "X-Accel-Buffering": "no",
+                "Connection": "keep-alive",
+            }
+            return Response(stream_with_context(generate()),
+                            mimetype="text/event-stream", headers=headers)
+
+        @app.route("/api/night")
+        def api_night():
+            return jsonify(self._night_state())
 
         @app.route("/api/stats")
         def api_stats():
@@ -430,24 +584,7 @@ class DashboardServer:
         @app.route("/api/ipblock/blocked")
         def api_ipblock_blocked():
             try:
-                import subprocess
-                out = subprocess.run(
-                    ["netsh", "advfirewall", "firewall", "show", "rule", "name=all"],
-                    capture_output=True, text=True, timeout=15,
-                ).stdout
-                ips = []
-                for chunk in out.split("Rule Name:"):
-                    lines = [ln.strip() for ln in chunk.splitlines() if ln.strip()]
-                    if not lines:
-                        continue
-                    if lines[0].startswith("CanaryBlock"):
-                        for line in lines:
-                            if line.upper().startswith("REMOTEIP"):
-                                for ip in line.split(":", 1)[1].replace("/", " ").split():
-                                    if ipReplace := ip.split("/")[0]:
-                                        if "." in ipReplace:
-                                            ips.append(ipReplace)
-                return jsonify({"blocked": sorted(set(ips))})
+                return jsonify({"blocked": self._blocked_ips(ttl=10)})
             except Exception as exc:
                 return jsonify({"error": str(exc)}), 500
 
@@ -471,8 +608,10 @@ class DashboardServer:
             if not ip:
                 return jsonify({"error": "ip required"}), 400
             rule = f'CanaryBlock_{ip.replace(".", "_")}'
-            import os as _os
-            r = _os.system(f'netsh advfirewall firewall delete rule name="{rule}"')
+            from ._winproc import run as _proc_run
+            r = _proc_run(["netsh", "advfirewall", "firewall", "delete",
+                           "rule", f"name={rule}"],
+                          capture_output=True, timeout=15).returncode
             self.ipblock._blocked.pop(ip, None)
             return jsonify({"ok": True, "ip": ip, "removed": r == 0})
 

@@ -18,6 +18,8 @@ import subprocess
 import sys
 from datetime import datetime
 
+from ._winproc import hidden_kwargs as _hidden_proc_kwargs
+
 BASE = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STATE_FILE = os.path.join(BASE, "runtime_state.json")
 STOP_FLAG = os.path.join(BASE, "tamper.stopped")
@@ -33,9 +35,7 @@ def _now():
 
 def _hidden_kwargs():
     """Keep helper processes from flashing a console window."""
-    if sys.platform.startswith("win"):
-        return {"creationflags": 0x08000000}  # CREATE_NO_WINDOW
-    return {}
+    return _hidden_proc_kwargs()
 
 
 # ---------------------------------------------------------------- state file

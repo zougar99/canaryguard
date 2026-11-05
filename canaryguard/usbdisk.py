@@ -50,8 +50,8 @@ def _set_usb_write_protect(enable):
 def _usb_device_info():
     """Return USB disk devices (model + serial) via WMI/CIM, best-effort."""
     try:
-        import subprocess
-        out = subprocess.run(
+        from ._winproc import run as _proc_run
+        out = _proc_run(
             ["powershell", "-NoProfile", "-Command",
              "Get-CimInstance Win32_DiskDrive | Where-Object {$_.InterfaceType -eq 'USB'} | "
              "ForEach-Object { \"$($_.Model) | SN=$($_.SerialNumber)\" }"],

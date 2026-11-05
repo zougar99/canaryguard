@@ -1,5 +1,5 @@
 import re
-import subprocess
+from ._winproc import run as _proc_run
 import threading
 import time
 from datetime import datetime
@@ -36,7 +36,7 @@ class PhoneProximity:
 
     def _arp_visible(self):
         try:
-            out = subprocess.run(["arp", "-a"], capture_output=True,
+            out = _proc_run(["arp", "-a"], capture_output=True,
                                  timeout=10, encoding="utf-8", errors="replace").stdout
         except Exception:
             return False

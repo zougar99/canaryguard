@@ -297,380 +297,565 @@ class GuardApp:
             pass
         sys.exit(0)
 
-    # ---------- main window ----------
+    # ---------- main window (redesigned control panel) ----------
 
     def _build_main(self):
         self.root.deiconify()
-        bar = tk.Frame(self.root, bg="#12343b", height=46)
-        bar.pack(fill="x")
-        logo = self._logo_image(26)
-        if logo is not None:
-            lbl = tk.Label(bar, image=logo, bg="#12343b")
-            lbl.image = logo
-            lbl.pack(side="left", padx=(12, 6), pady=8)
-        tk.Label(bar, text="CanaryGuard", bg="#12343b", fg="white",
-                 font=("Segoe UI", 12, "bold")).pack(side="left", padx=(0, 12), pady=8)
-        self.status_lbl = tk.Label(bar, text=">", bg="#12343b", fg="#bbb")
-        self.status_lbl.pack(side="right", padx=12)
+        self.root.title("CanaryGuard — Control Panel")
+        self.root.minsize(980, 640)
+        self.root.configure(bg="#0b0f16")
+        style = ttk.Style(self.root)
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+        style.configure("CG.Treeview", background="#121a24", fieldbackground="#121a24",
+                        foreground="#e6edf3", rowheight=24, borderwidth=0)
+        style.configure("CG.Treeview.Heading", background="#16202c", foreground="#8896a8",
+                        font=("Segoe UI", 9, "bold"), relief="flat")
+        style.map("CG.Treeview", background=[("selected", "#1f3347")])
+        style.configure("CG.TNotebook", background="#0b0f16", borderwidth=0)
+        style.configure("CG.TNotebook.Tab", background="#121a24", foreground="#8896a8",
+                        padding=(14, 8), font=("Segoe UI", 9))
+        style.map("CG.TNotebook.Tab",
+                  background=[("selected", "#16202c")],
+                  foreground=[("selected", "#e6edf3")])
 
-        nb = ttk.Notebook(self.root)
-        nb.pack(fill="both", expand=True)
-        self._tab_overview(nb)
+        bar = tk.Frame(self.root, bg="#0e141d", height=52)
+        bar.pack(fill="x")
+        bar.pack_propagate(False)
+        logo = self._logo_image(28)
+        if logo is not None:
+            lbl = tk.Label(bar, image=logo, bg="#0e141d")
+            lbl.image = logo
+            lbl.pack(side="left", padx=(14, 8), pady=10)
+        tk.Label(bar, text="CanaryGuard", bg="#0e141d", fg="#e6edf3",
+                 font=("Segoe UI", 12, "bold")).pack(side="left")
+        tk.Label(bar, text="  ·  Control Panel", bg="#0e141d", fg="#8896a8",
+                 font=("Segoe UI", 10)).pack(side="left")
+        tk.Button(bar, text="Open dashboard", bg="#16202c", fg="#e6edf3",
+                  activebackground="#1f3347", relief="flat", bd=0, padx=10, pady=4,
+                  command=self._open_dashboard).pack(side="right", padx=(4, 14), pady=10)
+        self.status_lbl = tk.Label(bar, text="connecting…", bg="#0e141d", fg="#8896a8",
+                                   font=("Segoe UI", 9))
+        self.status_lbl.pack(side="right", padx=8)
+
+        ctl = tk.Frame(self.root, bg="#121a24", pady=10)
+        ctl.pack(fill="x")
+        self.mode_badge = tk.Label(ctl, text="  MODE  ", bg="#16202c", fg="#8896a8",
+                                   font=("Segoe UI", 10, "bold"), padx=10, pady=6)
+        self.mode_badge.pack(side="left", padx=(14, 10))
+        for text, cmd, bg, fg in (
+            ("Sleep", self._ctl_pause, "#1f3347", "#e6edf3"),
+            ("Resume", self._ctl_resume, "#143d2b", "#8ce99a"),
+            ("Restart", self._ctl_restart, "#16202c", "#e6edf3"),
+            ("Stop", self._ctl_stop, "#3d1a1a", "#ff9c96"),
+        ):
+            tk.Button(ctl, text=text, command=cmd, bg=bg, fg=fg,
+                      activebackground="#22303f", activeforeground=fg,
+                      relief="flat", bd=0, padx=12, pady=6,
+                      font=("Segoe UI", 9, "bold")).pack(side="left", padx=4)
+        self.ctl_msg = tk.Label(ctl, text="", bg="#121a24", fg="#8896a8",
+                                font=("Segoe UI", 9))
+        self.ctl_msg.pack(side="left", padx=12)
+
+        nb = ttk.Notebook(self.root, style="CG.TNotebook")
+        nb.pack(fill="both", expand=True, padx=10, pady=(8, 10))
+        self.nb = nb
+        self._tab_dashboard(nb)
         self._tab_events(nb)
         self._tab_actions(nb)
         self._tab_manage(nb)
-
+        self._tab_blocklist(nb)
         self._poll()
 
-    # Tab 1: overview
-    def _tab_overview(self, nb):
-        f = tk.Frame(nb)
-        nb.add(f, text="  Overview  ")
-        self.ov_cards = tk.Frame(f)
-        self.ov_cards.pack(fill="x", padx=14, pady=12)
-        self.ov_monitors = ttk.Treeview(f, columns=("name", "state"), show="headings", height=9)
+    def _card(self, parent, title, value="–", accent="#2dd4bf"):
+        box = tk.Frame(parent, bg="#121a24", highlightbackground="#22303f",
+                       highlightthickness=1, padx=14, pady=12)
+        tk.Label(box, text=title.upper(), bg="#121a24", fg="#8896a8",
+                 font=("Segoe UI", 8, "bold"), anchor="w").pack(fill="x")
+        v = tk.Label(box, text=str(value), bg="#121a24", fg=accent,
+                     font=("Segoe UI", 22, "bold"), anchor="w")
+        v.pack(fill="x", pady=(2, 0))
+        box._val = v
+        return box
+
+    def _tab_dashboard(self, nb):
+        f = tk.Frame(nb, bg="#0b0f16")
+        nb.add(f, text="  Dashboard  ")
+        krow = tk.Frame(f, bg="#0b0f16")
+        krow.pack(fill="x", padx=10, pady=(10, 6))
+        self.kpi = {}
+        for key, title, accent in [
+            ("events", "Events", "#e6edf3"),
+            ("crit", "Critical 24h", "#f85149"),
+            ("creds", "Credentials", "#d29922"),
+            ("mon", "Monitors", "#3fb950"),
+            ("up", "Uptime", "#38bdf8"),
+            ("blk", "Blocked IPs", "#2dd4bf"),
+        ]:
+            c = self._card(krow, title, "–", accent)
+            c.pack(side="left", fill="x", expand=True, padx=4)
+            self.kpi[key] = c
+        body = tk.Frame(f, bg="#0b0f16")
+        body.pack(fill="both", expand=True, padx=10, pady=(4, 10))
+        left = tk.Frame(body, bg="#121a24", highlightbackground="#22303f",
+                        highlightthickness=1)
+        left.pack(side="left", fill="both", expand=True, padx=(0, 6))
+        tk.Label(left, text="  MONITORS", bg="#121a24", fg="#8896a8",
+                 font=("Segoe UI", 8, "bold"), anchor="w").pack(fill="x", pady=(10, 4))
+        self.ov_monitors = ttk.Treeview(left, columns=("name", "state"), show="headings",
+                                         height=14, style="CG.Treeview")
         self.ov_monitors.heading("name", text="Monitor")
         self.ov_monitors.heading("state", text="State")
-        self.ov_monitors.column("name", width=260)
-        self.ov_monitors.column("state", width=130, anchor="center")
-        self.ov_monitors.pack(fill="both", expand=True, padx=14, pady=(0, 10))
+        self.ov_monitors.column("name", width=240)
+        self.ov_monitors.column("state", width=110, anchor="center")
+        self.ov_monitors.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.ov_monitors.tag_configure("running", foreground="#3fb950")
+        self.ov_monitors.tag_configure("stopped", foreground="#f85149")
+        right = tk.Frame(body, bg="#121a24", highlightbackground="#22303f",
+                         highlightthickness=1)
+        right.pack(side="left", fill="both", expand=True, padx=(6, 0))
+        tk.Label(right, text="  RECENT EVENTS", bg="#121a24", fg="#8896a8",
+                 font=("Segoe UI", 8, "bold"), anchor="w").pack(fill="x", pady=(10, 4))
+        self.mini_feed = ttk.Treeview(right, columns=("time", "sev", "cat", "src"),
+                                       show="headings", height=14, style="CG.Treeview")
+        for cid, txt, w in (("time", "Time", 135), ("sev", "Severity", 80),
+                            ("cat", "Category", 165), ("src", "Source", 150)):
+            self.mini_feed.heading(cid, text=txt)
+            self.mini_feed.column(cid, width=w)
+        self.mini_feed.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        for s, c in (("critical", "#f85149"), ("high", "#f0883e"),
+                     ("medium", "#d29922"), ("low", "#8896a8")):
+            self.mini_feed.tag_configure(s, foreground=c)
 
-    # Tab 2: events
     def _tab_events(self, nb):
-        f = tk.Frame(nb)
+        f = tk.Frame(nb, bg="#0b0f16")
         nb.add(f, text="  Events  ")
+        hdr = tk.Frame(f, bg="#0b0f16")
+        hdr.pack(fill="x", padx=10, pady=(10, 4))
+        tk.Label(hdr, text="Latest events", bg="#0b0f16", fg="#8896a8").pack(side="left")
+        tk.Button(hdr, text="Refresh", bg="#16202c", fg="#e6edf3",
+                  relief="flat", bd=0, padx=10, pady=3,
+                  command=lambda: self._worker(self._refresh_events)).pack(side="right")
+        box = tk.Frame(f, bg="#121a24", highlightbackground="#22303f", highlightthickness=1)
+        box.pack(fill="both", expand=True, padx=10, pady=(4, 10))
         cols = ("time", "sev", "cat", "src")
-        self.ev_tree = ttk.Treeview(f, columns=cols, show="headings")
-        for cid, txt, w in (("time", "Time", 160), ("sev", "Severity", 90),
-                            ("cat", "Category", 200), ("src", "Source", 240)):
+        self.ev_tree = ttk.Treeview(box, columns=cols, show="headings",
+                                    style="CG.Treeview")
+        for cid, txt, w in (("time", "Time", 170), ("sev", "Severity", 90),
+                            ("cat", "Category", 220), ("src", "Source", 280)):
             self.ev_tree.heading(cid, text=txt)
             self.ev_tree.column(cid, width=w)
-        ysb = ttk.Scrollbar(f, orient="vertical", command=self.ev_tree.yview)
+        ysb = ttk.Scrollbar(box, orient="vertical", command=self.ev_tree.yview)
         self.ev_tree.configure(yscrollcommand=ysb.set)
-        self.ev_tree.pack(side="left", fill="both", expand=True)
-        ysb.pack(side="left", fill="y")
-        self.ev_tree.tag_configure("critical", foreground="#c0392b")
-        self.ev_tree.tag_configure("high", foreground="#d35400")
-        self.ev_tree.tag_configure("medium", foreground="#b7950b")
-        self.ev_tree.tag_configure("low", foreground="#7f8c8d")
+        self.ev_tree.pack(side="left", fill="both", expand=True, padx=(8, 0), pady=8)
+        ysb.pack(side="left", fill="y", pady=8)
+        for s, c in (("critical", "#f85149"), ("high", "#f0883e"),
+                     ("medium", "#d29922"), ("low", "#8896a8")):
+            self.ev_tree.tag_configure(s, foreground=c)
 
-    # Tab 3: actions
     def _tab_actions(self, nb):
-        f = tk.Frame(nb)
+        f = tk.Frame(nb, bg="#0b0f16")
         nb.add(f, text="  Actions  ")
-        wrap = tk.Frame(f)
-        wrap.pack(fill="both", expand=True, padx=14, pady=12)
+        wrap = tk.Frame(f, bg="#0b0f16")
+        wrap.pack(fill="both", expand=True, padx=12, pady=12)
 
-        grp = tk.LabelFrame(wrap, text=" PC control ", padx=10, pady=8)
-        grp.pack(fill="x", pady=(0, 10))
-        tk.Button(grp, text="🔒 Lock PC", width=16, command=self._do_lock).pack(side="left", padx=6)
-        tk.Button(grp, text="🚨 Panic (lock + alert)", width=22, command=self._do_panic).pack(side="left", padx=6)
-        tk.Button(grp, text="📸 Screenshot", width=16, command=self._do_shot).pack(side="left", padx=6)
+        def grp(title):
+            g = tk.Frame(wrap, bg="#121a24", highlightbackground="#22303f",
+                        highlightthickness=1)
+            g.pack(fill="x", pady=(0, 10))
+            tk.Label(g, text="  " + title.upper(), bg="#121a24", fg="#8896a8",
+                     font=("Segoe UI", 8, "bold"), anchor="w").pack(fill="x", pady=(10, 6))
+            row = tk.Frame(g, bg="#121a24")
+            row.pack(fill="x", padx=10, pady=(0, 12))
+            return row
 
-        grp2 = tk.LabelFrame(wrap, text=" Alerts ", padx=10, pady=8)
-        grp2.pack(fill="x", pady=(0, 10))
-        tk.Button(grp2, text="🧪 Test alert", width=16, command=self._do_test).pack(side="left", padx=6)
-        tk.Button(grp2, text="📰 Digest now", width=16, command=self._do_digest).pack(side="left", padx=6)
-        self.mute_entry = tk.Entry(grp2, width=14)
+        def abtn(p, text, cmd, danger=False):
+            bg, fg = ("#3d1a1a", "#ff9c96") if danger else ("#16202c", "#e6edf3")
+            tk.Button(p, text=text, command=cmd, bg=bg, fg=fg,
+                      activebackground="#22303f", relief="flat", bd=0,
+                      padx=12, pady=6).pack(side="left", padx=4)
+
+        r = grp("PC control")
+        abtn(r, "Lock PC", self._do_lock)
+        abtn(r, "Panic", self._do_panic, danger=True)
+        abtn(r, "Screenshot", self._do_shot)
+        r = grp("Alerts")
+        abtn(r, "Test alert", self._do_test)
+        abtn(r, "Digest now", self._do_digest)
+        tk.Label(r, text="  cat:", bg="#121a24", fg="#8896a8").pack(side="left", padx=(14, 4))
+        self.mute_entry = tk.Entry(r, width=16, bg="#0b0f16", fg="#e6edf3",
+                                   insertbackground="#e6edf3", relief="flat",
+                                   highlightbackground="#22303f", highlightthickness=1)
         self.mute_entry.insert(0, "proc:start")
-        self.mute_entry.pack(side="left", padx=(18, 4))
-        tk.Button(grp2, text="🔇 Mute cat", command=self._do_mute).pack(side="left", padx=3)
-        tk.Button(grp2, text="🔊 Unmute", command=self._do_unmute).pack(side="left", padx=3)
-        tk.Button(grp2, text="🔊 Unmute ALL", command=self._do_unmute_all).pack(side="left", padx=3)
+        self.mute_entry.pack(side="left", padx=4, ipady=4)
+        abtn(r, "Mute", self._do_mute)
+        abtn(r, "Unmute", self._do_unmute)
+        abtn(r, "Unmute all", self._do_unmute_all)
+        self.action_status = tk.Label(wrap, text="", bg="#0b0f16", fg="#8896a8",
+                                      anchor="w")
+        self.action_status.pack(fill="x", pady=(4, 0))
 
-        grp3 = tk.LabelFrame(wrap, text=" Firewall IP block ", padx=10, pady=8)
-        grp3.pack(fill="x", pady=(0, 10))
-        self.ip_entry = tk.Entry(grp3, width=18)
-        self.ip_entry.insert(0, "0.0.0.0")
-        self.ip_entry.pack(side="left", padx=6)
-        tk.Button(grp3, text="🚫 Block IP", command=self._do_block_ip).pack(side="left", padx=3)
-        tk.Button(grp3, text="✅ Unblock IP", command=self._do_unblock_ip).pack(side="left", padx=3)
-        self.ip_list = tk.Listbox(grp3, height=4)
-        self.ip_list.pack(fill="x", pady=(8, 0))
-        self.ip_list.bind("<Double-1>", lambda e: self.ip_entry.delete(0, "end") or self.ip_entry.insert(0, self.ip_list.get(self.ip_list.curindex())))
-
-        self.action_status = tk.Label(wrap, text="", fg="#145a32")
-        self.action_status.pack(anchor="w")
-
-    # Tab 4: manage monitors
     def _tab_manage(self, nb):
-        f = tk.Frame(nb)
-        nb.add(f, text="  Manage  ")
-        self.mng_tree = ttk.Treeview(f, columns=("name", "state", "on"), show="headings")
-        for cid, txt, w in (("name", "Monitor", 280), ("state", "State", 120), ("on", "Toggle", 110)):
-            self.mng_tree.heading(cid, text=txt)
-            self.mng_tree.column(cid, width=w, anchor=("w" if cid == "name" else "center"))
-        self.mng_tree.pack(fill="both", expand=True, padx=14, pady=12)
-        btnf = tk.Frame(f)
-        btnf.pack(pady=(0, 12))
-        tk.Button(btnf, text="▶ Enable selected", width=18, command=lambda: self._toggle_monitor(True)).pack(side="left", padx=6)
-        tk.Button(btnf, text="⏹ Disable selected", width=18, command=lambda: self._toggle_monitor(False)).pack(side="left", padx=6)
-        tk.Button(btnf, text="🔄 Refresh", width=12, command=self._refresh_monitors).pack(side="left", padx=6)
+        f = tk.Frame(nb, bg="#0b0f16")
+        nb.add(f, text="  Monitors  ")
+        box = tk.Frame(f, bg="#121a24", highlightbackground="#22303f",
+                       highlightthickness=1)
+        box.pack(fill="both", expand=True, padx=10, pady=10)
+        top = tk.Frame(box, bg="#121a24")
+        top.pack(fill="x", padx=10, pady=(10, 4))
+        tk.Label(top, text="Enable / pause monitors (saved)",
+                 bg="#121a24", fg="#8896a8").pack(side="left")
+        tk.Button(top, text="Refresh", bg="#16202c", fg="#e6edf3",
+                  relief="flat", bd=0, padx=10, pady=3,
+                  command=lambda: self._worker(self._refresh_monitors)).pack(side="right", padx=3)
+        tk.Button(top, text="Pause", bg="#16202c", fg="#e6edf3",
+                  relief="flat", bd=0, padx=10, pady=3,
+                  command=lambda: self._toggle_monitor(False)).pack(side="right", padx=3)
+        tk.Button(top, text="Start", bg="#143d2b", fg="#8ce99a",
+                  relief="flat", bd=0, padx=10, pady=3,
+                  command=lambda: self._toggle_monitor(True)).pack(side="right", padx=3)
+        self.mon_tree = ttk.Treeview(box, columns=("name", "state"), show="headings",
+                                     style="CG.Treeview")
+        self.mon_tree.heading("name", text="Monitor")
+        self.mon_tree.heading("state", text="State")
+        self.mon_tree.column("name", width=360)
+        self.mon_tree.column("state", width=160, anchor="center")
+        self.mon_tree.pack(fill="both", expand=True, padx=10, pady=(4, 10))
+        self.mon_tree.tag_configure("running", foreground="#3fb950")
+        self.mon_tree.tag_configure("stopped", foreground="#f85149")
 
-    # ---------- actions ----------
+    def _tab_blocklist(self, nb):
+        f = tk.Frame(nb, bg="#0b0f16")
+        nb.add(f, text="  Blocklist  ")
+        box = tk.Frame(f, bg="#121a24", highlightbackground="#22303f",
+                       highlightthickness=1)
+        box.pack(fill="both", expand=True, padx=10, pady=10)
+        top = tk.Frame(box, bg="#121a24")
+        top.pack(fill="x", padx=10, pady=(10, 6))
+        tk.Label(top, text="IP:", bg="#121a24", fg="#8896a8").pack(side="left")
+        self.block_ip = tk.Entry(top, width=20, bg="#0b0f16", fg="#e6edf3",
+                                 insertbackground="#e6edf3", relief="flat",
+                                 highlightbackground="#22303f", highlightthickness=1)
+        self.block_ip.pack(side="left", padx=6, ipady=4)
+        for txt, cmd, bg, fg in (
+            ("Block", self._do_block_ip, "#3d1a1a", "#ff9c96"),
+            ("Unblock", self._do_unblock_ip, "#143d2b", "#8ce99a"),
+            ("Refresh", self._refresh_ips, "#16202c", "#e6edf3"),
+        ):
+            tk.Button(top, text=txt, command=cmd, bg=bg, fg=fg,
+                      relief="flat", bd=0, padx=10, pady=4).pack(side="left", padx=3)
+        self.block_tree = ttk.Treeview(box, columns=("ip",), show="headings",
+                                       height=18, style="CG.Treeview")
+        self.block_tree.heading("ip", text="Blocked IP")
+        self.block_tree.column("ip", width=420)
+        self.block_tree.pack(fill="both", expand=True, padx=10, pady=(4, 10))
 
     def _set_action(self, txt, ok=True):
-        self.ui(lambda: self.action_status.config(text=txt, fg="#145a32" if ok else "#c0392b"))
-
-    def _act(self, path, name, silent=False):
-        def work():
+        fg = "#3fb950" if ok else "#f85149"
+        for name in ("action_status", "ctl_msg"):
             try:
-                self._post(path)
-                return None
-            except Exception as exc:
-                return exc
-        def done(err):
-            if err:
-                self._set_action(f"{name}: {err}", ok=False)
-            elif not silent:
-                self._set_action(f"{name} ✓")
+                getattr(self, name).config(text=txt, fg=fg)
+            except Exception:
+                pass
+
+    def _control(self, action, label):
+        self._set_action(f"{label}...")
+
+        def work():
+            self._post(f"/api/control/{action}", {"reason": "guardapp"})
+
+        def done(res):
+            if isinstance(res, Exception):
+                self._set_action(f"{label} failed: {res}", ok=False)
+                return
+            self._set_action(f"{label} requested")
+            self.root.after(1500, lambda: self._worker(self._refresh_overview))
+
+        self._worker(work, done)
+
+    def _ctl_pause(self):
+        self._control("pause", "Sleep")
+
+    def _ctl_resume(self):
+        self._control("resume", "Resume")
+
+    def _ctl_restart(self):
+        self._control("restart", "Restart")
+
+    def _ctl_stop(self):
+        if not messagebox.askyesno(
+            "Stop CanaryGuard",
+            "Stop the whole service?\n\nDashboard will go offline. "
+            "Use Telegram /start or this app to bring it back."):
+            return
+        self._control("stop", "Stop")
+
+    def _act(self, path, name):
+        self._set_action(f"{name}...")
+
+        def work():
+            self._post(path)
+
+        def done(res):
+            ok = not isinstance(res, Exception)
+            self._set_action(f"{name} OK" if ok else f"{name} failed: {res}", ok=ok)
+
         self._worker(work, done)
 
     def _do_lock(self):
-        self._act("/api/lock", "🔒 Locked")
+        self._act("/api/lock", "Lock")
 
     def _do_panic(self):
-        self._act("/api/panic", "🚨 Panic sent")
+        self._act("/api/panic", "Panic lock")
 
     def _do_test(self):
-        self._act("/api/test_alert", "🧪 Test alert sent")
+        self._act("/api/test_alert", "Test alert")
 
     def _do_digest(self):
-        self._act("/api/digest", "📰 Digest sent")
+        self._act("/api/digest", "Digest")
 
     def _do_mute(self):
         cat = self.mute_entry.get().strip()
-        def work():
-            try:
-                self._post("/api/mute", {"category": cat})
-                return None
-            except Exception as exc:
-                return exc
-        def done(err):
-            self._set_action(f"🔇 muted: {cat}" if not err else f"{err}", ok=not err)
-            self._refresh_monitors()
-        self._worker(work, done)
+        if not cat:
+            return
+        self._worker(lambda: self._post("/api/mute", {"category": cat}),
+                     lambda r: self._set_action(
+                         f"muted {cat}" if not isinstance(r, Exception) else f"mute failed: {r}",
+                         ok=not isinstance(r, Exception)))
 
     def _do_unmute(self):
         cat = self.mute_entry.get().strip()
-        def work():
-            try:
-                self._post("/api/unmute", {"category": cat})
-                return None
-            except Exception as exc:
-                return exc
-        def done(err):
-            self._set_action(f"🔊 unmuted: {cat}" if not err else f"{err}", ok=not err)
-            self._refresh_monitors()
-        self._worker(work, done)
+        if not cat:
+            return
+        self._worker(lambda: self._post("/api/unmute", {"category": cat}),
+                     lambda r: self._set_action(
+                         f"unmuted {cat}" if not isinstance(r, Exception) else f"unmute failed: {r}",
+                         ok=not isinstance(r, Exception)))
 
     def _do_unmute_all(self):
-        def work():
-            try:
-                self._post("/api/unmute", {"all": True})
-                return None
-            except Exception as exc:
-                return exc
-        def done(err):
-            self._set_action("🔊 all muted cleared" if not err else f"{err}", ok=not err)
-            self._refresh_monitors()
-        self._worker(work, done)
+        self._worker(lambda: self._post("/api/unmute", {"all": True}),
+                     lambda r: self._set_action(
+                         "unmuted all" if not isinstance(r, Exception) else f"unmute failed: {r}",
+                         ok=not isinstance(r, Exception)))
 
     def _do_block_ip(self):
-        ip = self.ip_entry.get().strip()
-        def work():
-            try:
-                self._post("/api/ipblock/block", {"ip": ip})
-                return None
-            except Exception as exc:
-                return exc
-        def done(err):
-            self._set_action(f"🚫 blocked {ip}" if not err else f"{err}", ok=not err)
-            self._refresh_ips()
-        self._worker(work, done)
+        ip = self.block_ip.get().strip()
+        if not ip:
+            return
+
+        def done(r):
+            ok = not isinstance(r, Exception)
+            self._set_action(f"blocked {ip}" if ok else f"block failed: {r}", ok=ok)
+            self._worker(self._refresh_ips)
+            self._worker(self._refresh_overview)
+
+        self._worker(lambda: self._post("/api/ipblock/block", {"ip": ip}), done)
 
     def _do_unblock_ip(self):
-        ip = self.ip_entry.get().strip()
-        def work():
-            try:
-                self._post("/api/ipblock/remove", {"ip": ip})
-                return None
-            except Exception as exc:
-                return exc
-        def done(err):
-            self._set_action(f"✅ unblocked {ip}" if not err else f"{err}", ok=not err)
-            self._refresh_ips()
-        self._worker(work, done)
+        ip = self.block_ip.get().strip()
+        if not ip:
+            return
+
+        def done(r):
+            ok = not isinstance(r, Exception)
+            self._set_action(f"unblocked {ip}" if ok else f"unblock failed: {r}", ok=ok)
+            self._worker(self._refresh_ips)
+            self._worker(self._refresh_overview)
+
+        self._worker(lambda: self._post("/api/ipblock/remove", {"ip": ip}), done)
 
     def _do_shot(self):
-        def work():
-            try:
-                r = self._get("/api/screenshot", timeout=15)
-                return r.content
-            except Exception as exc:
-                return exc
-        def done(data):
-            if isinstance(data, Exception):
-                self._set_action(f"screenshot: {data}", ok=False)
-                return
-            top = tk.Toplevel(self.root)
-            top.title("📸 Screenshot @ " + __import__("datetime").datetime.now().strftime("%H:%M:%S"))
-            if Image and ImageTk:
-                img = Image.open(io.BytesIO(data))
-                w, h = img.size
-                scale = min(1.0, 900 / w, 560 / h)
-                img = img.resize((int(w * scale), int(h * scale)))
-                ph = ImageTk.PhotoImage(img)
-                top.geometry(f"{img.width}x{img.height}")
-                lbl = tk.Label(top, image=ph)
-                lbl.image = ph
-                lbl.pack()
-                def saveit():
-                    from datetime import datetime as _dt
-                    sp = os.path.join(os.path.expanduser("~"), "Desktop",
-                                      f"shot_{_dt.now().strftime('%Y%m%d_%H%M%S')}.jpg")
-                    with open(sp, "wb") as fh:
-                        fh.write(data)
-                    messagebox.showinfo("Saved", sp, parent=top)
-                tk.Button(top, text="💾 Save to Desktop", command=saveit).pack(pady=6)
-            else:
-                sp = os.path.join(os.path.expanduser("~"), "Desktop", "cg_screenshot.jpg")
-                with open(sp, "wb") as fh:
-                    fh.write(data)
-                tk.Label(top, text=f"no Pillow - saved to {sp}").pack(padx=20, pady=20)
-        self._worker(work, done)
-
-    # ---------- refresh loops ----------
-
-    def _poll(self):
-        self._refresh_stats()
-        self._refresh_events()
-        self._refresh_monitors()
-        self._refresh_ips()
-        self._refresh_job = self.root.after(5000, self._poll)
-
-    def _refresh_stats(self):
-        def work():
-            try:
-                r = self._get("/api/stats")
-                return r.json()
-            except Exception:
-                return None
-        def done(data):
-            online = data is not None
-            self.online.set(online)
-            self.ui(lambda: self._paint_status(online))
-            if not data:
-                return
-            cats = _count_map(data.get("categories", {}))
-            total = data.get("total", 0)
-            sev = _count_map(data.get("severities", {}))
-            cards = [
-                ("Events", str(total)),
-                ("Creds", str(data.get("creds", 0))),
-                ("High+Critical", str(int(sev.get("high", 0)) + int(sev.get("critical", 0)))),
-                ("Categories", str(len(cats))),
-            ]
-            self.ui(lambda: self._paint_cards(cards))
-        self._worker(work, done)
-
-    def _paint_status(self, online):
-        if online:
-            self.status_lbl.config(text="● ONLINE", fg="#7dcea0")
-        else:
-            self.status_lbl.config(text="● OFFLINE (CanaryGuard down)", fg="#e74c3c")
-
-    def _paint_cards(self, cards):
-        for w in self.ov_cards.winfo_children():
-            w.destroy()
-        for title, val in cards:
-            box = tk.Frame(self.ov_cards, bg="#f4f6f7", bd=1, relief="solid")
-            box.pack(side="left", padx=8, ipadx=14, ipady=8)
-            tk.Label(box, text=title, bg="#f4f6f7", fg="#5d6d7e", font=("Segoe UI", 9)).pack()
-            tk.Label(box, text=val, bg="#f4f6f7", fg="#212f3d", font=("Segoe UI", 16, "bold")).pack()
-
-    def _refresh_events(self):
-        def work():
-            try:
-                return self._get("/api/events").json()
-            except Exception:
-                return None
-        def done(rows):
-            if not rows:
-                return
-            def paint():
-                self.ev_tree.delete(*self.ev_tree.get_children())
-                for row in rows[:80]:
-                    sev = (row.get("severity") or "low").lower()
-                    self.ev_tree.insert("", "end", tags=(sev,), values=(
-                        row.get("ts") or "",
-                        sev,
-                        row.get("category") or "",
-                        row.get("src_ip") or "local",
-                    ))
-            self.ui(paint)
-        self._worker(work, done)
-
-    def _refresh_monitors(self):
-        def work():
-            try:
-                return self._get("/api/monitors").json()
-            except Exception:
-                return None
-        def done(data):
-            if not data:
-                return
-            mons = data.get("monitors", {})
-            def paint():
-                self.ov_monitors.delete(*self.ov_monitors.get_children())
-                self.mng_tree.delete(*self.mng_tree.get_children())
-                for name in sorted(mons):
-                    st = mons[name].get("status", "?")
-                    label = MONITOR_LABELS.get(name, name)
-                    self.ov_monitors.insert("", "end", values=(label, st))
-                    self.mng_tree.insert("", "end", iid=name, values=(label, st, "enable / disable"))
-            self.ui(paint)
-        self._worker(work, done)
-
-    def _refresh_ips(self):
-        def work():
-            try:
-                return self._get("/api/ipblock/blocked").json()
-            except Exception:
-                return None
-        def done(data):
-            ips = (data or {}).get("blocked", [])
-            def paint():
-                self.ip_list.delete(0, "end")
-                for ip in ips:
-                    self.ip_list.insert("end", ip)
-            self.ui(paint)
-        self._worker(work, done)
-
-    def _toggle_monitor(self, enabled):
-        sel = self.mng_tree.selection()
-        if not sel:
-            return
-        name = sel[0]
+        self._set_action("capturing screenshot...")
 
         def work():
-            try:
-                r = self._post(f"/api/monitors/{name}", {"enabled": enabled})
-                return r.json()
-            except Exception as exc:
-                return exc
+            return self._get("/api/screenshot", timeout=15).content
+
         def done(res):
             if isinstance(res, Exception):
-                self._set_action(f"toggle: {res}", ok=False)
-            else:
-                self._set_action(f"{name} → {'enabled' if enabled else 'disabled'}", ok=bool(res.get("ok")))
-            self._refresh_monitors()
+                self._set_action(f"screenshot failed: {res}", ok=False)
+                return
+            if Image is None:
+                p = os.path.join(UI_DIR, "screenshot.jpg")
+                with open(p, "wb") as fh:
+                    fh.write(res)
+                self._set_action(f"saved: {p}")
+                return
+            try:
+                img = Image.open(io.BytesIO(res))
+                top = tk.Toplevel(self.root)
+                top.title("Screenshot")
+                top.configure(bg="#0b0f16")
+                w, h = img.size
+                scale = min(900 / max(w, 1), 600 / max(h, 1), 1.0)
+                prev = img.resize((int(w * scale), int(h * scale)), Image.LANCZOS)
+                tkimg = ImageTk.PhotoImage(prev)
+                lbl = tk.Label(top, image=tkimg, bg="#0b0f16")
+                lbl.image = tkimg
+                lbl.pack()
+                self._set_action("screenshot OK")
+            except Exception as exc:
+                self._set_action(f"display failed: {exc}", ok=False)
+
         self._worker(work, done)
+
+    def _open_dashboard(self):
+        try:
+            import webbrowser
+            webbrowser.open(BASE_URL + "/")
+        except Exception:
+            pass
+
+    def _poll(self):
+        self._worker(self._refresh_overview)
+        self.root.after(6000, self._poll)
+
+    def _refresh_overview(self):
+        try:
+            d = self._get("/api/overview").json()
+        except Exception as exc:
+            self.ui(self._paint_offline, exc)
+            return
+        self.ui(self._paint_overview, d)
+        self.ui(self._paint_events, d.get("events", []))
+
+    def _refresh_stats(self):
+        self._refresh_overview()
+
+    def _refresh_events(self):
+        try:
+            self.ui(self._paint_events, self._get("/api/events").json())
+        except Exception:
+            pass
+
+    def _refresh_monitors(self):
+        try:
+            self.ui(self._paint_monitors,
+                    self._get("/api/monitors").json().get("monitors", {}))
+        except Exception:
+            pass
+
+    def _refresh_ips(self):
+        try:
+            self.ui(self._paint_ips,
+                    self._get("/api/ipblock/blocked").json().get("blocked", []))
+        except Exception:
+            pass
+
+    def _paint_offline(self, exc):
+        self.status_lbl.config(text=f"dashboard offline: {exc}", fg="#f85149")
+        try:
+            self.mode_badge.config(text="  OFFLINE  ", bg="#3d1a1a", fg="#ff9c96")
+        except Exception:
+            pass
+
+    def _paint_overview(self, d):
+        ctl = d.get("control") or {}
+        st = d.get("stats") or {}
+        mode = str(ctl.get("mode", "?")).lower()
+        colors = {"running": ("#143d2b", "#8ce99a"), "paused": ("#3d3314", "#e9c46a"),
+                  "stopped": ("#3d1a1a", "#ff9c96"), "starting": ("#14263d", "#8bd6ff"),
+                  "restarting": ("#14263d", "#8bd6ff")}
+        bg, fg = colors.get(mode, ("#16202c", "#8896a8"))
+        self.mode_badge.config(text=f"  {mode.upper()}  ", bg=bg, fg=fg)
+        up = ctl.get("uptime_seconds")
+        up_txt = "–"
+        if up is not None:
+            s = int(up)
+            h, m = divmod(s, 3600)
+            d2, h = divmod(h, 24)
+            up_txt = f"{d2}d {h}h" if d2 else (f"{h}h {m}m" if h else f"{m}m")
+        self.status_lbl.config(
+            text=f"{mode} · {ctl.get('monitors_running',0)}/{ctl.get('monitors_total',0)} monitors · {up_txt}",
+            fg="#8896a8")
+        sev = _count_map(st.get("severities") or [])
+        crit = sev.get("critical", 0) + sev.get("high", 0)
+        vals = {"events": f"{st.get('total',0):,}", "crit": f"{crit:,}",
+                "creds": f"{st.get('creds',0):,}",
+                "mon": f"{ctl.get('monitors_running',0)}/{ctl.get('monitors_total',0)}",
+                "up": up_txt, "blk": f"{len(d.get('blocked') or []):,}"}
+        for k, v in vals.items():
+            if hasattr(self, "kpi") and k in self.kpi:
+                self.kpi[k]._val.config(text=v)
+        self._paint_monitors(d.get("monitors") or {})
+        self._paint_ips(d.get("blocked") or [])
+
+    def _paint_status(self, online):
+        pass
+
+    def _paint_cards(self, cards):
+        pass
+
+    def _paint_monitors(self, mons):
+        for tv in (getattr(self, "ov_monitors", None), getattr(self, "mon_tree", None)):
+            if tv is None:
+                continue
+            for i in tv.get_children():
+                tv.delete(i)
+            for name, info in sorted(mons.items()):
+                st = info.get("status", "?") if isinstance(info, dict) else str(info)
+                tv.insert("", "end", values=(name, st),
+                          tags=("running" if st == "running" else "stopped",))
+
+    def _paint_events(self, rows):
+        for tv in (getattr(self, "ev_tree", None), getattr(self, "mini_feed", None)):
+            if tv is None:
+                continue
+            for i in tv.get_children():
+                tv.delete(i)
+            src = rows[:120] if tv is getattr(self, "ev_tree", None) else rows[:18]
+            for e in src:
+                sev = str(e.get("severity", "low")).lower()
+                srcv = e.get("src_ip") or e.get("ip") or "-"
+                tv.insert("", "end",
+                          values=(e.get("ts", ""), sev, e.get("category", "?"), srcv),
+                          tags=(sev if sev in ("critical", "high", "medium", "low") else "low",))
+
+    def _paint_ips(self, ips):
+        tv = getattr(self, "block_tree", None)
+        if tv is None:
+            return
+        for i in tv.get_children():
+            tv.delete(i)
+        for ip in ips:
+            tv.insert("", "end", values=(ip,))
+
+    def _toggle_monitor(self, enabled):
+        tv = getattr(self, "mon_tree", None)
+        if tv is None:
+            return
+        sel = tv.selection()
+        if not sel:
+            self._set_action("pick a monitor first", ok=False)
+            return
+        name = tv.item(sel[0], "values")[0]
+
+        def done(r):
+            ok = not isinstance(r, Exception)
+            self._set_action(
+                f"{name} {'started' if enabled else 'paused'}" if ok else f"toggle failed: {r}",
+                ok=ok)
+            self._worker(self._refresh_monitors)
+            self._worker(self._refresh_overview)
+
+        self._worker(lambda: self._post(f"/api/monitors/{name}", {"enabled": enabled}),
+                    done)
 
 
 def main():
+    try:
+        if os.name == "nt":
+            import ctypes
+            ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(
+                "CanaryGuard.Desktop")
+    except Exception:
+        pass
     root = tk.Tk()
-    root.withdraw()
+    try:
+        root.withdraw()
+    except Exception:
+        pass
     GuardApp(root)
     root.mainloop()
 

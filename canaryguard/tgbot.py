@@ -1,4 +1,4 @@
-import subprocess
+from ._winproc import popen as _proc_popen
 import threading
 import time
 from datetime import datetime
@@ -121,7 +121,7 @@ class TelegramCommandBot:
         self._reply("\n".join(lines))
 
     def _cmd_lock(self):
-        subprocess.Popen(["rundll32.exe", "user32.dll,LockWorkStation"])
+        _proc_popen(["rundll32.exe", "user32.dll,LockWorkStation"])
         self._reply("\U0001f512 locking...")
 
     def _cmd_mute(self, arg):

@@ -1,5 +1,7 @@
 import os
 import time
+
+from ._winproc import run as _proc_run
 from datetime import datetime
 
 from .config import get_store
@@ -61,7 +63,9 @@ class RansomwareTripwire:
 
     def _kill_network(self):
         try:
-            os.system(f'netsh interface set interface "{self.adapter}" disable')
+            _proc_run(["netsh", "interface", "set", "interface",
+                      self.adapter, "disable"],
+                     capture_output=True, timeout=10)
             self.logger(f"[ransomware] network killed ({self.adapter})")
         except Exception as exc:
             self.logger(f"[ransomware] net kill failed: {exc}")

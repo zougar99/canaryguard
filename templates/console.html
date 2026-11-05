@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>CanaryGuard — NOC console</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<style>
+  :root{
+    --bg:#05080d; --panel:#0b1119; --panel2:#0f1721; --line:#1b2836;
+    --txt:#e8eef6; --mut:#7f8ea3; --acc:#2dd4bf; --acc2:#38bdf8;
+    --ok:#3fb950; --warn:#d29922; --bad:#f85149;
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;background:
+      radial-gradient(1200px 600px at 12% -10%,rgba(45,212,191,.10),transparent 60%),
+      radial-gradient(900px 500px at 100% 0%,rgba(56,189,248,.08),transparent 55%),
+      var(--bg);
+    color:var(--txt);font:13px/1.45 'Segoe UI',system-ui,sans-serif;
+    display:flex;flex-direction:column;overflow:hidden;
+  }
+  a{color:var(--acc2);text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  header{
+    display:flex;align-items:center;gap:14px;padding:10px 18px;
+    border-bottom:1px solid var(--line);background:rgba(5,8,13,.72);backdrop-filter:blur(8px);
+  }
+  header img{width:32px;height:32px;filter:drop-shadow(0 2px 8px rgba(0,0,0,.6))}
+  header .ttl{font-size:15px;font-weight:700;letter-spacing:.4px}
+  header .sub{color:var(--mut);font-size:11px;text-transform:uppercase;letter-spacing:1.1px}
+  .spacer{flex:1}
+  .pill{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;
+    border:1px solid var(--line);background:var(--panel);font-size:11.5px;color:var(--mut)}
+  .pill i{width:8px;height:8px;border-radius:50%;background:var(--mut)}
+  .pill.live i{background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.18);animation:blink 2s infinite}
+  .pill.dead i{background:var(--bad);box-shadow:0 0 0 3px rgba(248,81,73,.18)}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:.35}}
+  .clock{font:600 16px/1 Consolas,'Cascadia Mono',monospace;color:var(--txt);font-variant-numeric:tabular-nums}
+  .clock small{display:block;color:var(--mut);font:400 10px/1.4 'Segoe UI',sans-serif;letter-spacing:1px;text-align:right}
+
+  .wrap{flex:1;min-height:0;display:grid;grid-template-columns:290px 1fr 320px;
+    grid-template-rows:auto 1fr;gap:12px;padding:12px}
+  .col{min-height:0;display:flex;flex-direction:column;gap:12px}
+  .panel{
+    background:linear-gradient(180deg,rgba(15,23,33,.9),rgba(11,17,25,.9));
+    border:1px solid var(--line);border-radius:12px;padding:12px;min-height:0;
+    box-shadow:0 12px 28px rgba(0,0,0,.35);
+  }
+  .panel h3{margin:0 0 10px;font-size:10.5px;letter-spacing:1.2px;text-transform:uppercase;color:var(--mut);
+    display:flex;align-items:center;gap:8px}
+  .panel h3 .right{margin-left:auto;color:var(--mut);font-size:10.5px;letter-spacing:.4px;text-transform:none}
+
+  /* big numbers */
+  .nums{display:grid;gap:10px}
+  .numbox{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--panel2);position:relative;overflow:hidden}
+  .numbox::before{content:"";position:absolute;inset:0 auto 0 0;width:3px;background:var(--acc)}
+  .numbox.bad::before{background:var(--bad)} .numbox.warn::before{background:var(--warn)} .numbox.ok::before{background:var(--ok)}
+  .numbox .k{color:var(--mut);font-size:10px;letter-spacing:1px;text-transform:uppercase}
+  .numbox .v{font:650 30px/1.1 Consolas,'Cascadia Mono',monospace;font-variant-numeric:tabular-nums;letter-spacing:-1px}
+  .numbox .h{color:var(--mut);font-size:10.5px}
+
+  /* mode banner */
+  .mode{border:1px solid var(--line);border-radius:10px;padding:11px 12px;background:var(--panel2)}
+  .mode .row{display:flex;align-items:center;gap:10px}
+  .mode .dot{width:10px;height:10px;border-radius:50%;background:var(--mut);flex:0 0 auto}
+  .mode .dot.running{background:var(--ok);box-shadow:0 0 0 4px rgba(63,185,80,.16);animation:blink 2.4s infinite}
+  .mode .dot.paused{background:var(--warn)} .mode .dot.stopped{background:var(--bad)}
+  .mode .nm{font-weight:700;letter-spacing:.6px;font-size:13px}
+  .mode .rs{color:var(--mut);font-size:10.5px;margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mode .mini{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+  .mode .mini div{background:rgba(255,255,255,.02);border:1px solid var(--line);border-radius:7px;padding:6px 8px}
+  .mode .mini b{display:block;font:600 14px/1.2 Consolas,monospace}
+  .mode .mini span{color:var(--mut);font-size:9.5px;letter-spacing:.7px;text-transform:uppercase}
+
+  /* feed */
+  .feed{flex:1;overflow:hidden;display:flex;flex-direction:column-reverse;gap:5px;
+    mask-image:linear-gradient(to top,transparent 0,#000 26px,#000 100%)}
+  .ev{display:grid;grid-template-columns:62px 84px 1fr auto;gap:10px;align-items:center;
+    border:1px solid var(--line);border-radius:8px;padding:7px 10px;background:var(--panel2);
+    font-size:12px;animation:slide .35s ease-out}
+  @keyframes slide{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:none}}
+  .ev .t{color:var(--mut);font:11px/1 Consolas,monospace;font-variant-numeric:tabular-nums}
+  .ev .cat{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .ev .src{color:var(--mut);font:11px/1 Consolas,monospace;text-align:right;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px}
+  .badge{display:inline-block;padding:1px 7px;border-radius:999px;font-size:9.5px;font-weight:700;
+    letter-spacing:.4px;text-transform:uppercase;border:1px solid transparent;text-align:center}
+  .s-critical{background:rgba(248,81,73,.16);color:#ff9c96;border-color:rgba(248,81,73,.4)}
+  .s-high{background:rgba(240,136,62,.16);color:#ffb37a;border-color:rgba(240,136,62,.4)}
+  .s-medium{background:rgba(210,153,34,.16);color:#e9c46a;border-color:rgba(210,153,34,.4)}
+  .s-low{background:rgba(63,185,80,.14);color:#8ce99a;border-color:rgba(63,185,80,.34)}
+  .s-info{background:rgba(139,148,158,.14);color:var(--mut);border-color:var(--line)}
+
+  /* sparkline + severity */
+  #spark{width:100%;height:80px;display:block}
+  #spark .grid line{stroke:var(--line);stroke-dasharray:2 4}
+  #spark .ln{fill:none;stroke:var(--acc);stroke-width:2;stroke-linejoin:round;stroke-linecap:round}
+  #spark .area{fill:url(#sg)}
+  .sev{display:grid;gap:7px;margin-top:4px}
+  .sev .row{display:grid;grid-template-columns:64px 1fr 40px;align-items:center;gap:8px;font-size:11px}
+  .sev .track{height:7px;border-radius:5px;background:rgba(255,255,255,.04);border:1px solid var(--line);overflow:hidden}
+  .sev .fill{height:100%}
+  .sev .n{text-align:right;color:var(--mut);font:11px Consolas,monospace}
+
+  .top{display:grid;gap:5px;font-size:11.5px}
+  .top .row{display:flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:7px;
+    padding:5px 8px;background:var(--panel2)}
+  .top .ip{font:11px Consolas,monospace;color:var(--acc2)}
+  .top .cc{color:var(--mut);font-size:10.5px}
+  .top .n{margin-left:auto;color:var(--mut);font:11px Consolas,monospace}
+
+  .mons{display:grid;gap:5px;overflow:hidden}
+  .mons .row{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--mut)}
+  .mons .sw{width:7px;height:7px;border-radius:50%;background:var(--bad)}
+  .mons .sw.running{background:var(--ok);box-shadow:0 0 0 3px rgba(63,185,80,.12)}
+  .mons .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--txt)}
+  .mons .q{font:10px Consolas,monospace}
+
+  footer{display:flex;align-items:center;gap:14px;padding:6px 18px;border-top:1px solid var(--line);
+    color:var(--mut);font-size:10.5px;letter-spacing:.4px}
+  .key{display:inline-block;border:1px solid var(--line);border-radius:4px;padding:0 5px;color:var(--txt)}
+
+  @media (max-width:1200px){ .wrap{grid-template-columns:250px 1fr} .col.right{display:none} }
+  @media (max-width:820px){
+    .wrap{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+    .col.left{flex-direction:row;overflow-x:auto}
+    .col.left .panel{min-width:240px}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <img src="/static/logo.png" alt="">
+  <div>
+    <div class="ttl">CanaryGuard <span style="color:var(--mut);font-weight:400">/ NOC</span></div>
+    <div class="sub" id="sub">initialising</div>
+  </div>
+  <span class="spacer"></span>
+  <span class="pill" id="night" style="display:none">🌙 night mode</span>
+  <span class="pill live" id="conn"><i></i><span id="conn-t">connecting…</span></span>
+  <div class="clock"><span id="clock">--:--:--</span><small id="date"></small></div>
+  <a href="/" style="font-size:11.5px">dashboard →</a>
+</header>
+
+<div class="wrap">
+
+  <!-- LEFT -->
+  <div class="col left">
+    <div class="panel">
+      <h3>Posture <span class="right" id="mode-mini"></span></h3>
+      <div class="mode">
+        <div class="row"><span class="dot" id="mode-dot"></span><span class="nm" id="mode">CONNECTING</span></div>
+        <div class="rs" id="mode-rs">–</div>
+        <div class="mini">
+          <div><b id="m-up">–</b><span>uptime</span></div>
+          <div><b id="m-mon">–</b><span>monitors</span></div>
+        </div>
+      </div>
+    </div>
+    <div class="panel" style="flex:1;overflow:auto">
+      <h3>Counters</h3>
+      <div class="nums">
+        <div class="numbox"><div class="k">Events</div><div class="v" id="n-events">0</div><div class="h" id="n-since">all time</div></div>
+        <div class="numbox bad"><div class="k">Critical · high</div><div class="v" id="n-crit">0</div><div class="h">24h window</div></div>
+        <div class="numbox warn"><div class="k">Credentials</div><div class="v" id="n-creds">0</div><div class="h">captured logins</div></div>
+        <div class="numbox ok"><div class="k">Blocked IPs</div><div class="v" id="n-blocked">0</div><div class="h">firewall rules</div></div>
+        <div class="numbox"><div class="k">Host sensors</div><div class="v" id="n-host">0</div><div class="h">keys · files · net · usb</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div class="col" style="min-width:0">
+    <div class="panel">
+      <h3>Traffic <span class="right" id="peak">24h</span></h3>
+      <svg id="spark" viewBox="0 0 800 80" preserveAspectRatio="none" role="img" aria-label="Events per hour"></svg>
+    </div>
+    <div class="panel" style="flex:1;min-height:0;display:flex;flex-direction:column">
+      <h3>Live stream <span class="right" id="feed-count">0 events</span></h3>
+      <div class="feed" id="feed"></div>
+    </div>
+  </div>
+
+  <!-- RIGHT -->
+  <div class="col right">
+    <div class="panel">
+      <h3>Severity <span class="right" id="sev-total">–</span></h3>
+      <div class="sev" id="sev"></div>
+    </div>
+    <div class="panel" style="flex:1;min-height:0;overflow:auto">
+      <h3>Top sources <span class="right">24h</span></h3>
+      <div class="top" id="topips"></div>
+    </div>
+    <div class="panel" style="max-height:38%;display:flex;flex-direction:column">
+      <h3>Sensors <span class="right" id="mon-q">–</span></h3>
+      <div class="mons" id="mons"></div>
+    </div>
+  </div>
+
+</div>
+
+<footer>
+  <span id="f-mode">mode –</span>
+  <span id="f-rate">stream · 3s</span>
+  <span class="spacer" style="flex:1"></span>
+  <span><span class="key">f</span> fullscreen</span>
+  <span><span class="key">p</span> pause</span>
+  <span><span class="key">t</span> theme</span>
+  <span id="f-updated">updated –</span>
+</footer>
+
+<script>
+"use strict";
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, c => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const num = n => Number(n ?? 0).toLocaleString("en-US");
+const SEV = { critical:"#f85149", high:"#f0883e", medium:"#d29922", low:"#3fb950", info:"#8b949e" };
+const SEV_ORDER = ["critical","high","medium","low","info"];
+const MAP = {};
+const state = { feed: [], seen: new Set(), paused: false, data: null, sse: null, retry: null, rate: 3 };
+
+/* clock */
+function clock(){
+  const d = new Date();
+  $("#clock").textContent = d.toLocaleTimeString([], { hour12:false });
+  $("#date").textContent = d.toLocaleDateString(undefined,{weekday:"short",month:"short",day:"2-digit"});
+}
+clock(); setInterval(clock, 1000);
+
+function uptime(s){
+  if (s === null || s === undefined) return "–";
+  s = Math.max(0, Number(s) | 0);
+  const d = Math.floor(s/86400), h = Math.floor((s%86400)/3600), m = Math.floor((s%3600)/60);
+  if (d) return d + "d " + h + "h";
+  if (h) return h + "h " + m + "m";
+  return m + "m";
+}
+
+/* ---- painters ---- */
+function paintMode(d){
+  const c = d.control || {};
+  const mode = String(c.mode || "unknown").toLowerCase();
+  $("#mode").textContent = mode.toUpperCase();
+  $("#mode").style.color = { running:"var(--ok)", paused:"var(--warn)", stopped:"var(--bad)",
+    starting:"var(--acc2)", restarting:"var(--acc2)" }[mode] || "var(--txt)";
+  $("#mode-dot").className = "dot " + mode;
+  $("#mode-rs").textContent = c.reason ? "reason: " + c.reason : (c.since ? "since " + c.since : "no pending action");
+  $("#m-up").textContent = uptime(c.uptime_seconds);
+  $("#m-mon").textContent = (c.monitors_running ?? 0) + "/" + (c.monitors_total ?? 0);
+  $("#mode-mini").textContent = c.dashboard ? "dashboard online" : "dashboard offline";
+  $("#f-mode").textContent = "mode " + mode;
+  $("#sub").textContent = c.dashboard ? "honeypot · host sensors · remote control" : "service unreachable";
+  const night = d.night || {};
+  $("#night").style.display = night.active ? "inline-flex" : "none";
+}
+
+function paintCounters(d){
+  const st = d.stats || {}, c = d.counts || {};
+  const sev = {};
+  (st.severities || []).forEach(([k, n]) => sev[k] = n);
+  $("#n-events").textContent = num(st.total);
+  $("#n-crit").textContent = num((sev.critical||0) + (sev.high||0));
+  $("#n-creds").textContent = num(st.creds);
+  $("#n-blocked").textContent = num((d.blocked||[]).length);
+  $("#n-host").textContent = num((c.keys||0) + (c.files||0) + (c.net||0) + (c.usb||0) + (c.clip||0));
+  $("#n-since").textContent = st.first_seen ? "since " + st.first_seen : "all time";
+}
+
+function paintSpark(series){
+  const svg = $("#spark");
+  const W = 800, H = 80, P = 6;
+  if (!series || !series.length){
+    svg.innerHTML = `<text x="${W/2}" y="${H/2}" fill="#7f8ea3" font-size="10" text-anchor="middle">no events in the last 24h</text>`;
+    $("#peak").textContent = "24h";
+    return;
+  }
+  const vals = series.map(x => Number(x[1]) || 0);
+  const max = Math.max(...vals, 1), n = series.length;
+  const X = i => P + (W - 2*P) * (n === 1 ? .5 : i/(n-1));
+  const Y = v => (H - P) - (H - 2*P) * (v/max);
+  const line = series.map((_, i) => `${i?"L":"M"}${X(i).toFixed(1)},${Y(vals[i]).toFixed(1)}`).join(" ");
+  const area = `${line} L${X(n-1).toFixed(1)},${H-P} L${X(0).toFixed(1)},${H-P} Z`;
+  let grid = "";
+  for (let g = 1; g < 3; g++){
+    const y = P + (H - 2*P) * g/3;
+    grid += `<line x1="${P}" y1="${y}" x2="${W-P}" y2="${y}"></line>`;
+  }
+  svg.innerHTML = `<defs><linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity=".45"/>
+      <stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/></linearGradient></defs>
+    <g class="grid">${grid}</g><path class="area" d="${area}"></path><path class="ln" d="${line}"></path>`;
+  const peak = Math.max(...vals);
+  $("#peak").textContent = "peak " + peak + " · " + String((series[vals.indexOf(peak)]||[])[0]||"").slice(11,16);
+}
+
+function paintSeverity(d){
+  const m = {};
+  ((d.stats||{}).severities || []).forEach(([k,n]) => m[k] = n);
+  const total = SEV_ORDER.reduce((a,k) => a + (m[k]||0), 0);
+  const max = Math.max(...SEV_ORDER.map(k => m[k]||0), 1);
+  $("#sev-total").textContent = num(total) + " · 24h";
+  $("#sev").innerHTML = SEV_ORDER.map(k => {
+    const n = m[k] || 0, pct = Math.round(100*n/max);
+    return `<div class="row"><span>${k}</span>
+      <span class="track"><span class="fill" style="width:${Math.max(n?3:0,pct)}%;background:${SEV[k]}"></span></span>
+      <span class="n">${num(n)}</span></div>`;
+  }).join("");
+}
+
+function paintTop(d){
+  const geo = {};
+  ((d.stats||{}).geo || []).forEach(g => geo[g.src_ip] = g);
+  const rows = (d.stats||{}).top_ips || [];
+  $("#topips").innerHTML = rows.length ? rows.slice(0, 10).map(r => {
+    const g = geo[r.src_ip] || {};
+    const where = [g.country, g.city].filter(Boolean).join(" · ") || "unknown";
+    return `<div class="row"><span class="ip">${esc(r.src_ip)}</span>
+      <span class="cc">${esc(where)}</span><span class="n">${num(r.n)}</span></div>`;
+  }).join("") : '<span style="color:var(--mut);font-size:11px">no traffic</span>';
+}
+
+function paintMonitors(d){
+  const mons = d.monitors || {};
+  const names = Object.keys(mons).sort();
+  const running = names.filter(n => mons[n].status === "running").length;
+  $("#mon-q").textContent = running + "/" + names.length;
+  $("#mons").innerHTML = names.map(n => {
+    const st = mons[n].status || "?";
+    return `<div class="row"><span class="sw ${esc(st)}"></span>
+      <span class="nm">${esc(n)}</span><span class="q">${esc(st)}</span></div>`;
+  }).join("");
+}
+
+function paintFeed(){
+  const rows = state.feed.filter(e => true).slice(0, 40);
+  $("#feed-count").textContent = state.feed.length + " events";
+  const box = $("#feed");
+  box.innerHTML = rows.map((e, i) => {
+    const sev = String(e.severity || "info").toLowerCase();
+    const cls = SEV_ORDER.includes(sev) ? sev : "info";
+    return `<div class="ev" ${i > 2 ? 'style="animation:none"' : ""}>
+      <span class="t">${esc(String(e.ts||"").slice(11,19) || "—")}</span>
+      <span class="badge s-${cls}">${esc(cls)}</span>
+      <span class="cat" title="${esc(e.category)}">${esc(e.category || "—")}</span>
+      <span class="src">${e.src_ip ? esc(e.src_ip) : "local"}${e.dst_port ? ":" + esc(e.dst_port) : ""}</span>
+    </div>`;
+  }).join("") || '<div style="color:var(--mut);padding:20px;text-align:center">waiting for events…</div>';
+}
+
+/* ---- data handling ---- */
+function apply(d){
+  state.data = d;
+  paintMode(d); paintCounters(d); paintSpark((d.stats||{}).timeline);
+  paintSeverity(d); paintTop(d); paintMonitors(d);
+  (d.events || []).slice().reverse().forEach(e => {
+    if (state.seen.has(e.id)) return;
+    state.seen.add(e.id); state.feed.unshift(e);
+  });
+  state.feed = state.feed.slice(0, 200);
+  if (!state.paused) paintFeed();
+  $("#f-updated").textContent = "updated " + new Date().toLocaleTimeString();
+}
+
+function connected(ok){
+  $("#conn").className = "pill " + (ok ? "live" : "dead");
+  $("#conn-t").textContent = ok ? "live · " + new Date().toLocaleTimeString() : "reconnecting…";
+}
+
+/* ---- SSE with polling fallback ---- */
+function startStream(){
+  stopStream();
+  if (!window.EventSource){ poll(); return; }
+  let first = true;
+  const es = new EventSource("/api/stream?interval=" + state.rate);
+  state.sse = es;
+  es.onmessage = (ev) => {
+    try {
+      const d = JSON.parse(ev.data);
+      if (d.error) throw new Error(d.error);
+      connected(true); first = false; apply(d);
+    } catch (e) { connected(false); }
+  };
+  es.onerror = () => {
+    connected(false);
+    if (first){ es.close(); state.sse = null; poll(); }
+  };
+}
+function stopStream(){
+  if (state.sse){ state.sse.close(); state.sse = null; }
+  clearInterval(state.retry); state.retry = null;
+  clearTimeout(state.pollT); state.pollT = null;
+}
+let polling = false;
+function poll(){
+  polling = true;
+  const tick = async () => {
+    try {
+      const r = await fetch("/api/overview", { cache:"no-store" });
+      if (!r.ok) throw new Error("HTTP " + r.status);
+      connected(true); apply(await r.json());
+    } catch (e){ connected(false); }
+    state.pollT = setTimeout(tick, state.rate * 1000);
+  };
+  tick();
+}
+
+/* ---- input ---- */
+document.addEventListener("keydown", (e) => {
+  if (e.key === "f"){
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  } else if (e.key === "p"){
+    state.paused = !state.paused;
+    $("#f-rate").textContent = state.paused ? "stream · paused" : "stream · " + state.rate + "s";
+    if (!state.paused) paintFeed();
+  } else if (e.key === "t"){
+    document.body.classList.toggle("light");
+  }
+});
+
+startStream();
+setInterval(() => { if (polling && state.pollT) {} }, 60000);
+</script>
+</body>
+</html>

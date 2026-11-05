@@ -1,5 +1,5 @@
 import re
-import subprocess
+from ._winproc import run as _proc_run
 import threading
 import time
 from datetime import datetime
@@ -41,7 +41,7 @@ class WiFiEvilTwinWatch:
     def _read(self):
         """Return {ifname: (state, ssid, bssid)} for all WLAN interfaces."""
         try:
-            out = subprocess.run(
+            out = _proc_run(
                 ["netsh", "wlan", "show", "interfaces"],
                 capture_output=True, timeout=10, encoding="utf-8", errors="replace",
             ).stdout
