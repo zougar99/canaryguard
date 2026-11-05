@@ -75,7 +75,8 @@ class CanaryLures:
             return
         key = f"note:{path.lower()}"
         now = time.monotonic()
-        if now - self._seen.get(key, 0) < 60:
+        last = self._seen.get(key)
+        if last is not None and now - last < 60:
             return
         self._seen[key] = now
         ts = time.strftime("%Y-%m-%d %H:%M:%S")

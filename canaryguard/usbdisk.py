@@ -110,7 +110,8 @@ class USBDiskMonitor:
 
     def _within(self, table, key):
         now = time.monotonic()
-        if now - table.get(key, 0) < self.cooldown:
+        last = table.get(key)
+        if last is not None and now - last < self.cooldown:
             return True
         table[key] = now
         return False

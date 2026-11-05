@@ -84,7 +84,8 @@ class ProcessMonitor:
 
     def _within_cooldown(self, key):
         now = time.monotonic()
-        return (now - self._cooldown.get(key, 0)) < self.cooldown
+        last = self._cooldown.get(key)
+        return last is not None and (now - last) < self.cooldown
 
     def _record(self, ev_type, pid, info):
         name = info["name"]

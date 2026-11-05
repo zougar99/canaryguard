@@ -66,7 +66,8 @@ class ClipboardMonitor:
 
     def _within(self, key):
         now = time.monotonic()
-        if now - self._cd.get(key, 0) < self.cooldown:
+        last = self._cd.get(key)
+        if last is not None and now - last < self.cooldown:
             return True
         self._cd[key] = now
         return False

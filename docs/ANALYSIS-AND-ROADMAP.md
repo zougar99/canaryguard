@@ -5,7 +5,13 @@
 > A10 feedback, A11 threatfeed, A12 spray) · Phase 2 ✅ (B1 parent→child, B3 entropy, C5 watermarked
 > lures, D7 Telegram inline buttons) · Phase 3 ✅ (D2 Docker, D4 retention, D5 validation, D9 STIX,
 > D12 playbooks) · A1 isolation forest ❌, A6 scanner fingerprinting ❌, C1/C2 dynamic honey-DB ❌,
-> C4 anti-fingerprinting ❌, D3 Prometheus ❌. 48 pytest tests green; CI runs 3.9 & 3.12.
+> C4 anti-fingerprinting ❌, D3 Prometheus ❌. 50 pytest tests green; CI runs 3.9 & 3.12.
+>
+> **Application layer (1.1.0, 2026-11-05):** demo mode (`python -m canaryguard.demo`, seeded
+> 7-day attack history), installable PWA (manifest + service worker + canary icons), Windows
+> installer pipeline (`packaging/windows/`, PyInstaller + Inno Setup), GitHub Release workflow
+> (tag `v*` → exes + installer + sdist/wheel). See CHANGELOG.md and README (Demo mode /
+> Install as an app / Windows installer).
 
 Analysis date: 2026-11-05 · Scope: full repo (`main` @ `e07e54f`, ~7,450 LOC Python, 44 modules, 0 tests, no CI)
 

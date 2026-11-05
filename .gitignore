@@ -47,3 +47,6 @@ Desktop.ini
 secret.key
 feeds/
 playbooks.json
+
+# demo mode artifacts
+demo_data/

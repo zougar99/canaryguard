@@ -27,8 +27,10 @@ class SprayDetector:
             self._events.popleft()
 
     def _cooled_down(self, key, now):
-        last = self._alerted.get(key, 0.0)
-        return (now - last) >= self.cooldown
+        last = self._alerted.get(key)
+        # missing key = never alerted = ready to fire; a zero timestamp is
+        # not a valid monotonic baseline on a freshly booted host
+        return last is None or (now - last) >= self.cooldown
 
     def observe(self, src_ip, username, password, service=None, when=None):
         """Feed one credential attempt.

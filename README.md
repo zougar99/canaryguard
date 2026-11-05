@@ -20,7 +20,10 @@ channel, even when the main service is completely down.
 - [Installation](#installation)
 - [Configuration](#configuration)
 - [Dashboard](#dashboard)
+- [Demo mode](#demo-mode)
+- [Install as an app (PWA)](#install-as-an-app-pwa)
 - [Desktop app](#desktop-app)
+- [Windows installer & releases](#windows-installer--releases)
 - [Telegram control](#telegram-control)
 - [Watchdog and resilience](#watchdog-and-resilience)
 - [Data and storage](#data-and-storage)
@@ -276,8 +279,38 @@ Main API endpoints:
 
 ---
 
-## Desktop app
+## Demo mode
 
+See the whole dashboard populated with a realistic 7-day attack history — no sensors, no tokens, no real data.
+
+```bash
+python -m canaryguard.demo             # seeds + serves on 0.0.0.0:8090
+python -m canaryguard.demo --port 8080
+python -m canaryguard.demo --seed-only # just (re)write the demo database
+```
+
+The demo seeds ~560 events from 10 attacker profiles (including a full kill chain:
+recon → exploitation → credential access → exfiltration), encrypted fake credentials, GeoIP data,
+48 periodic beacon lines, honeytoken trips, sessions and triage feedback. Consistent
+`demo_data/` is regenerated on every start.
+
+> ⚠ **DEMO ONLY.** The demo config ships `noauth_allow_remote: true` so anyone on the LAN can
+> view it without credentials — that is deliberate for a zero-friction preview and must never be
+> copied into a real deployment. The demo database is throwaway: it is wiped and re-seeded each run.
+
+## Install as an app (PWA)
+
+The dashboard is an installable Progressive Web App. In Chrome/Edge (served over HTTPS or
+localhost) click the **Install** icon in the address bar — CanaryGuard opens as its own
+standalone window with the canary logo, works offline for the shell UI, and caches static assets.
+On iOS Safari use *Share → Add to Home Screen*.
+
+How it works: `static/manifest.webmanifest` (standalone display, maskable icons, dark theme) +
+`static/sw.js` (cache-first for `/static/*`, network-first for everything else with a JSON
+fallback when the device is offline). The service worker only handles same-origin GET/HEAD
+requests; API calls never get cached blindly.
+
+## Desktop app
 `guardapp.py` is a native Tk application that talks to the same dashboard API.
 
 ```powershell
@@ -292,10 +325,37 @@ python guardapp.py
   monitors).
 - UI exceptions are written to `%LOCALAPPDATA%\CanaryGuard\guardapp.err.log`.
 
+## Windows installer & releases
+
+Two ways to ship it as a real Windows application:
+
+**Prebuilt (recommended):** pushing a tag `vX.Y.Z` runs the [release workflow](.github/workflows/release.yml)
+which builds `CanaryGuard.exe` (service) and `CanaryGuardApp.exe` (desktop) on `windows-latest`,
+compiles the Inno Setup installer when available, and attaches everything to a GitHub Release
+together with the Python sdist/wheel.
+
+**Build locally** (on Windows, from the repo root):
+
+```powershell
+pwsh packaging\windows\build-installer.ps1
+```
+
+Requires Python and [Inno Setup 6](https://jrsoftware.org/isinfo.php). It runs PyInstaller for
+both entry points, then compiles `packaging/windows/CanaryGuard.iss` into
+`dist\CanaryGuard-Setup-1.1.0.exe`. The installer:
+
+- installs per-user under `%LOCALAPPDATA%\Programs\CanaryGuard` (no admin needed),
+- adds Start Menu shortcuts (desktop app, service, README, uninstaller) and an optional desktop icon,
+- can register the background scheduled tasks at logon (checkbox, opt-out),
+- removes the `CanaryGuard` / `OpenCanaryHoneypot` / `TamperGuard` / `CanaryGuardControl`
+  scheduled tasks on uninstall.
+
+For a portable build without the installer, `pwsh packaging\windows\build-desktop-exe.ps1`
+leaves the two `.exe` files in `dist\`.
+
 ---
 
 ## Telegram control
-
 CanaryGuard uses a dedicated supervisor process (`cgctl.py`) for Telegram. It is started by
 the `CanaryGuardControl` scheduled task and is independent from `main.py`.
 

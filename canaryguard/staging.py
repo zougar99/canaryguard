@@ -75,7 +75,8 @@ class StagingDetector:
 
     def _within(self, key):
         now = time.monotonic()
-        if now - self._cd.get(key, 0) < 30:
+        last = self._cd.get(key)
+        if last is not None and now - last < 30:
             return True
         self._cd[key] = now
         return False

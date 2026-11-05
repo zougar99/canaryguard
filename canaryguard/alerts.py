@@ -94,8 +94,8 @@ class AlertManager:
 
     def _within_cooldown(self, key):
         now = time.monotonic()
-        last = self._last_sent.get(key, 0)
-        return (now - last) < self.cooldown
+        last = self._last_sent.get(key)
+        return last is not None and (now - last) < self.cooldown
 
     def _is_night(self):
         now = time.localtime()
@@ -203,8 +203,8 @@ class AlertManager:
         for name, fn in channels:
             key = (name, subject)
             now = time.monotonic()
-            last = self._last_sent.get(key, 0)
-            if now - last < self.cooldown:
+            last = self._last_sent.get(key)
+            if last is not None and now - last < self.cooldown:
                 # duplicate inside cooldown -> count it instead of dropping silently
                 self._suppressed[key] = self._suppressed.get(key, 0) + 1
                 continue

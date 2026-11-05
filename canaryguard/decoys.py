@@ -49,7 +49,8 @@ class DecoyManager:
 
         key = f"{kind}:{token_id}"
         now = time.monotonic()
-        if now - self._cooldown.get(key, 0) < int(self.config.get("decoys", "cooldown_seconds", default=60)):
+        last = self._cooldown.get(key)
+        if last is not None and now - last < int(self.config.get("decoys", "cooldown_seconds", default=60)):
             return
         self._cooldown[key] = now
 

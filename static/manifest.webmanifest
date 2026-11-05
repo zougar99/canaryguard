@@ -1,0 +1,16 @@
+{
+  "name": "CanaryGuard — Honeypot & Host IDS",
+  "short_name": "CanaryGuard",
+  "description": "Self-hosted honeypot + host intrusion detection + remote control. Install the dashboard as an app.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0f1115",
+  "theme_color": "#0f1115",
+  "categories": ["security", "utilities"],
+  "icons": [
+    { "src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable" },
+    { "src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable" }
+  ]
+}
