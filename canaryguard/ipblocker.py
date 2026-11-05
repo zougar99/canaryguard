@@ -1,9 +1,24 @@
 import os
+import ipaddress
 import threading
 import time
 from datetime import datetime
 
 from .config import get_store
+
+
+def valid_ip(ip):
+    """Return the canonical IP string if `ip` parses, else None.
+
+    IPs arrive from network-derived log lines — they must never reach
+    a shell without validation.
+    """
+    if not ip:
+        return None
+    try:
+        return str(ipaddress.ip_address(str(ip).strip()))
+    except ValueError:
+        return None
 
 
 class IPBlocker:
@@ -31,7 +46,10 @@ class IPBlocker:
         self._lock = threading.Lock()
 
     def register_fail(self, ip):
-        if not self.enabled or not ip or ip in ("127.0.0.1", "::1", "?", ""):
+        if not self.enabled:
+            return
+        ip = valid_ip(ip)
+        if not ip or ip in ("127.0.0.1", "::1"):
             return
         now = time.monotonic()
         with self._lock:
@@ -44,7 +62,11 @@ class IPBlocker:
                 self._block(ip, len(fails))
 
     def _block(self, ip, count):
-        rule = f'{self.prefix}_{ip.replace(".", "_")}'
+        ip = valid_ip(ip)
+        if not ip:
+            self.logger(f"[ipblock] refusing to block invalid IP {ip!r}")
+            return
+        rule = f'{self.prefix}_{ip.replace(".", "_").replace(":", "_")}'
         cmd = (
             f'netsh advfirewall firewall add rule name="{rule}" '
             f'dir=in action=block remoteip={ip} enable=yes'
@@ -76,7 +98,7 @@ class IPBlocker:
                 expired = [ip for ip, exp in self._blocked.items() if exp <= now]
                 for ip in expired:
                     del self._blocked[ip]
-                    rule = f'{self.prefix}_{ip.replace(".", "_")}'
+                    rule = f'{self.prefix}_{ip.replace(".", "_").replace(":", "_")}'
                     os.system(
                         f'netsh advfirewall firewall delete rule name="{rule}"'
                     )

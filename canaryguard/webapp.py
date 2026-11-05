@@ -30,6 +30,12 @@ class DashboardServer:
         self.runtime = runtime
         self.app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"), static_folder=os.path.join(BASE_DIR, "static"))
         self.app.secret_key = config.get("dashboard", "secret_key", default=pysecrets.token_hex(32))
+        self.app.config.update(
+            SESSION_COOKIE_HTTPONLY=True,
+            SESSION_COOKIE_SAMESITE="Lax",
+            # SESSION_COOKIE_SECURE intentionally not forced: the dashboard is
+            # typically served over plain HTTP on a trusted LAN / tailnet.
+        )
         self._username = config.get("dashboard", "username", default="admin")
         self._password = config.get("dashboard", "password", default=None)
         self._register_routes()
@@ -468,9 +474,12 @@ class DashboardServer:
                 return jsonify({"error": "ipblocker not available"}), 503
             body = request.get_json(silent=True) or {}
             ip = (body.get("ip") or "").strip()
-            if not ip:
-                return jsonify({"error": "ip required"}), 400
-            rule = f'CanaryBlock_{ip.replace(".", "_")}'
+            try:
+                import ipaddress
+                ip = str(ipaddress.ip_address(ip))
+            except ValueError:
+                return jsonify({"error": "invalid ip"}), 400
+            rule = f'CanaryBlock_{ip.replace(".", "_").replace(":", "_")}'
             import os as _os
             r = _os.system(f'netsh advfirewall firewall delete rule name="{rule}"')
             self.ipblock._blocked.pop(ip, None)

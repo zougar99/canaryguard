@@ -29,6 +29,15 @@ def file_entropy(path, sample_bytes=65536):
     return -sum((c / n) * math.log2(c / n) for c in counts.values())
 
 
+import re as _re
+_ADAPTER_RE = _re.compile(r'^[A-Za-z0-9 _\-]{1,64}$')
+
+def _safe_adapter(name):
+    """Adapter names come from config and are interpolated into shell commands — whitelist them."""
+    name = str(name or '').strip()
+    return name if _ADAPTER_RE.match(name) else None
+
+
 class RansomwareTripwire:
     """Detect mass file modification typical of ransomware encryption.
 
@@ -48,7 +57,9 @@ class RansomwareTripwire:
         self.threshold = int(cfg.get("threshold", 40))
         self.window = float(cfg.get("window_seconds", 60))
         self.kill_net = cfg.get("kill_network", False)
-        self.adapter = cfg.get("network_adapter", "Wi-Fi")
+        self.adapter = _safe_adapter(cfg.get("network_adapter", "Wi-Fi"))
+        if cfg.get("network_adapter") and not self.adapter:
+            print("[ransomware] network_adapter failed validation — network kill disabled")
         self.entropy_trigger = int(cfg.get("entropy_trigger", 8))
         self.entropy_threshold = float(cfg.get("entropy_threshold", 7.5))
         self.ext_ratio = float(cfg.get("ext_ratio", 0.6))
@@ -113,6 +124,9 @@ class RansomwareTripwire:
         )
 
     def _kill_network(self):
+        if not self.adapter:
+            self.logger("[ransomware] network kill skipped — invalid adapter name in config")
+            return
         try:
             os.system(f'netsh interface set interface "{self.adapter}" disable')
             self.logger(f"[ransomware] network killed ({self.adapter})")

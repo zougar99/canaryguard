@@ -54,6 +54,15 @@ def _allow_all(kind):
         return False
 
 
+import re as _re
+_ADAPTER_RE = _re.compile(r'^[A-Za-z0-9 _\-]{1,64}$')
+
+def _safe_adapter(name):
+    """Adapter names come from config and are interpolated into shell commands — whitelist them."""
+    name = str(name or '').strip()
+    return name if _ADAPTER_RE.match(name) else None
+
+
 class FortressMode:
     """One-button lockdown for when you leave the room.
 
@@ -73,7 +82,9 @@ class FortressMode:
         self.enabled = cfg.get("enabled", True)
         self.kill_wifi = bool(cfg.get("kill_wifi", False))
         self.lock_pc = bool(cfg.get("lock_pc", True))
-        self.adapter = cfg.get("network_adapter", "Wi-Fi")
+        self.adapter = _safe_adapter(cfg.get("network_adapter", "Wi-Fi"))
+        if cfg.get("network_adapter") and not self.adapter:
+            print("[fortress] network_adapter failed validation — network kill disabled")
         self.engaged = False
         self._time = None
         self._tstate = {}   # adapter state before engage
@@ -88,7 +99,7 @@ class FortressMode:
             cam = _deny_all("webcam")
             mic = _deny_all("microphone")
             wifi = None
-            if self.kill_wifi and os.name == "nt":
+            if self.kill_wifi and self.adapter and os.name == "nt":
                 try:
                     state = subprocess.run(
                         ["netsh", "interface", "show", "interface", f"name={self.adapter}"],
