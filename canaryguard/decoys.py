@@ -8,7 +8,7 @@ from datetime import datetime
 
 from .config import get_store
 
-DEFAULT_FOLDER = r"C:\Users\werlist99\CanaryDecoys"
+DEFAULT_FOLDER = os.path.join(os.path.expanduser("~"), "CanaryDecoys")
 
 
 def _now():

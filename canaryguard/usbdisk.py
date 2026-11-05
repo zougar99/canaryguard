@@ -210,8 +210,9 @@ class USBDiskMonitor:
         if self._within(self._open_cd, f"fs:{etype}:{path}"):
             return
         icons = {"created": "\U0001f4dd", "deleted": "\U0001f5d1\ufe0f", "modified": "\u270f\ufe0f", "moved": "\U0001f4c2"}
+        _fallback = "\U0001f4c4"
         self._alert("usb:file", "medium",
-                    f"{icons.get(etype, '\U0001f4c4')} FILE {etype.upper()} on {mountpoint}",
+                    f"{icons.get(etype, _fallback)} FILE {etype.upper()} on {mountpoint}",
                     [f"path: {path}", f"time: {_now()}"])
 
     # ---------- explorer windows ----------

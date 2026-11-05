@@ -408,7 +408,24 @@ canaryguard/
 ├── pyproject.toml
 ├── requirements.txt
 ├── canaryguard/
-│   ├── alerts.py               # Telegram / Discord / Slack / e-mail
+│   ├── alerts.py               # Telegram / Discord / Slack / e-mail (+ inline buttons)
+│   ├── beacon.py               # C2 beacon periodicity detection
+│   ├── changepoint.py          # CUSUM event-rate change-point detector
+│   ├── commonpass.py           # Bloom filter of breached passwords
+│   ├── credgraph.py            # credential-stuffing/spray clustering
+│   ├── cryptostore.py          # at-rest Fernet encryption helpers
+│   ├── incidents.py            # kill-chain incident reconstruction
+│   ├── luredoc.py              # watermarked lure document generator
+│   ├── maintenance.py          # retention purge / VACUUM job
+│   ├── markov.py               # scripted-vs-human shell heuristic
+│   ├── paths.py                # portable path resolution (CANARYGUARD_HOME)
+│   ├── playbooks.py            # SOAR-lite playbooks engine
+│   ├── processgraph.py         # parent→child process rarity
+│   ├── rarity.py               # (service, category) rarity scoring
+│   ├── spray.py                # credential spray/fan-out detector
+│   ├── stix.py                 # STIX 2.1 bundle export
+│   ├── threatfeed.py           # threat-intel feed loading + lookup
+│   ├── validation.py           # config.json validation at startup
 │   ├── browserwatch.py         # browser credential-file access
 │   ├── camwatch.py             # camera / microphone access
 │   ├── classifier.py           # event grouping and scoring
@@ -501,6 +518,68 @@ canaryguard/
 - This is a defensive honeypot and monitoring tool. Use it only on machines and networks you
   own or are explicitly authorised to monitor. Never plant real credentials as decoys and
   never deploy it against third parties.
+
+---
+
+## Development status & roadmap (2026-11)
+
+The full analysis lives in [`docs/ANALYSIS-AND-ROADMAP.md`](docs/ANALYSIS-AND-ROADMAP.md).
+What has been implemented so far on the development branch:
+
+### Security & stability fixes
+- UTC/local time skew fixed everywhere (`datetime('now','localtime', …)`) — 24h stats, digests, purges.
+- SIEM forwarder: **bounded drop-oldest queue** (no more OOM while the SIEM is down), secret scrubbing
+  before egress, TLS-verify options, optional TCP syslog.
+- Ingest: **log rotation/truncation detection** (size + inode) — the tail no longer stalls forever.
+- **At-rest encryption** (Fernet/AES) for captured credentials, keystrokes and secret-scanner hits.
+  Legacy plaintext rows are re-encrypted automatically on first start. Key from `CANARYGUARD_SECRET_KEY`
+  or `<home>/secret.key` (auto-generated, chmod 600). New dep: `cryptography`.
+- Nightly evidence zip can be encrypted with a **user-held key** (`evidence.encryption_key`).
+- `start-canaryguard.ps1` auto `git pull` is now **opt-in** (`CANARYGUARD_AUTO_UPDATE=1`).
+- All hard-coded machine paths removed — scripts derive locations from `$PSScriptRoot`/`~`/`CANARYGUARD_HOME`.
+- Config validation at startup (`canaryguard/validation.py`) — all problems printed in one pass.
+- Daily **retention job** purges old rows per table (`retention.*`), optional VACUUM.
+- Python ≤ 3.11 compatible f-strings; 48 pytest tests; GitHub Actions CI (3.9 + 3.12).
+
+### New analytics (on by default, tune with `analytics.*`)
+| Feature | Module | Endpoint |
+|---|---|---|
+| Rarity ("surprisingness") severity boost | `rarity.py` | (ingest path) |
+| CUSUM change-point on event rate | `changepoint.py` | (ingest path) |
+| Credential-spray / username-fanout detection | `spray.py` | `credential_spray` alert |
+| Common/breached-password Bloom filter | `commonpass.py` | (ingest creds path) |
+| Credential-graph clustering (stuffing botnets) | `credgraph.py` | `/api/credgraph` |
+| Kill-chain incidents (MITRE labels) | `incidents.py` | `/api/incidents`, `/api/incidents/<ip>` |
+| Parent→child process rarity (B1) | `processgraph.py` | `proc:rare_parent` alert |
+| Ransomware entropy + extension-shift layers | `ransomware.py` | `ransomware:detected` |
+| Threat-intel feeds (opt-in, `threatintel.*`) | `threatfeed.py` | `/api/intel/<ip>` |
+| C2 beacon periodicity detection | `beacon.py` | `/api/beacons` |
+| Scripted vs human shell heuristic | `markov.py` | (library) |
+| Human triage feedback (tp/fp) | `logstore.feedback*` | `POST /api/feedback`, `/api/feedback/stats` |
+
+### Operational features
+- **Playbooks engine** (SOAR-lite): JSON rules in `playbooks.rules` or `<home>/playbooks.json`
+  (`block_ip` / `notify` / `log` actions) — `playbooks.py`.
+- **STIX 2.1 export** of high-severity attacker IPs — `/api/export/stix?hours=24` (`stix.py`).
+- **Telegram inline buttons** on high/critical alerts `[Ack] [Mute] [Block IP]` via cgctl.py
+  (`alerts.inline_buttons`).
+- **Watermarked decoy documents** (zero-width TXT + marked PDF) — `canaryguard/luredoc.py`:
+  `python -m canaryguard.luredoc --kind pdf --out ~/Desktop/vpn-creds.pdf`
+- **`/api/health`** liveness endpoint.
+- **Docker**: `Dockerfile` + `docker-compose.yml` (dashboard on 127.0.0.1:8080; mount `config.json` and the
+  OpenCanary log). **CI**: `.github/workflows/ci.yml`.
+
+### Running the tests
+
+```bash
+pip install -e . && pip install pytest
+python -m pytest tests/ -q
+```
+
+### Not yet implemented (next iterations)
+Isolation-Forest scoring (A1), scanner fingerprinting (A6), dynamic per-attacker honey-DB (C1/C2),
+anti-fingerprinting of fake services (C4), PWA dashboard, fleet mode, STIX → MISP push, D3 Prometheus
+`/metrics`. See the roadmap doc for the full list.
 
 ---
 

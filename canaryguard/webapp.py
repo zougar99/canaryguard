@@ -476,6 +476,98 @@ class DashboardServer:
             self.ipblock._blocked.pop(ip, None)
             return jsonify({"ok": True, "ip": ip, "removed": r == 0})
 
+        @app.route("/api/health")
+        def api_health():
+            """Minimal liveness + key counters (auth-protected like the rest of /api)."""
+            try:
+                total = self.store.fetchall("SELECT COUNT(*) AS n FROM events")[0]["n"]
+                return jsonify({"ok": True, "db": "up", "events": total,
+                                "service": "canaryguard", "time": __import__("datetime").datetime.now().strftime("%Y-%m-%d %H:%M:%S")})
+            except Exception as exc:
+                return jsonify({"ok": False, "db": str(exc)}), 500
+
+        @app.route("/api/incidents")
+        def api_incidents():
+            from .incidents import build_incidents
+            hours = request.args.get("hours", 24, type=int)
+            min_events = request.args.get("min_events", 2, type=int)
+            try:
+                return jsonify({"hours": hours, "incidents": build_incidents(self.store, hours=hours, min_events=min_events)})
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/incidents/<path:src_ip>")
+        def api_incident_timeline(src_ip):
+            from .incidents import incident_timeline
+            hours = request.args.get("hours", 24, type=int)
+            try:
+                return jsonify({"src_ip": src_ip, "timeline": incident_timeline(self.store, src_ip, hours=hours)})
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/credgraph")
+        def api_credgraph():
+            from .credgraph import analyze_store
+            min_ips = request.args.get("min_ips", 3, type=int)
+            try:
+                return jsonify(analyze_store(self.store, min_ips=min_ips))
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/beacons")
+        def api_beacons():
+            from .beacon import find_beacons
+            hours = request.args.get("hours", 24, type=int)
+            try:
+                return jsonify({"hours": hours, "beacons": find_beacons(self.store, hours=hours)})
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/intel/<path:ip>")
+        def api_intel(ip):
+            try:
+                from .threatfeed import ThreatIntel
+
+                ti = ThreatIntel(self.config, store=self.store, logger=self.logger)
+                return jsonify({"ip": ip, **ti.lookup(ip)})
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/export/stix")
+        def api_export_stix():
+            from .stix import bundle_json
+            hours = request.args.get("hours", 24, type=int)
+            try:
+                payload = bundle_json(self.store, hours=hours)
+                resp = app.response_class(payload, mimetype="application/stix+json")
+                resp.headers["Content-Disposition"] = f"attachment; filename=canaryguard-stix-{hours}h.json"
+                return resp
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/feedback", methods=["POST"])
+        def api_feedback_post():
+            body = request.get_json(silent=True) or {}
+            label = str(body.get("label", "")).lower().strip()
+            if label not in ("tp", "fp"):
+                return jsonify({"error": "label must be 'tp' or 'fp'"}), 400
+            try:
+                event_id = body.get("event_id")
+                category = str(body.get("category", ""))[:120]
+                note = str(body.get("note", ""))[:500]
+                fid = self.store.insert_feedback(event_id, category, label, note)
+                return jsonify({"ok": True, "id": fid})
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+        @app.route("/api/feedback/stats")
+        def api_feedback_stats():
+            try:
+                return jsonify(self.store.feedback_stats())
+            except Exception as exc:
+                return jsonify({"error": str(exc)}), 500
+
+
     # ---- helpers ----
 
     def _mon_status(self, mon):

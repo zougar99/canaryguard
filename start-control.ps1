@@ -12,8 +12,13 @@
 # the process silently.
 
 $ErrorActionPreference = 'SilentlyContinue'
-$dir = 'C:\Users\werlist99\canaryguard'
-$python = 'C:\Program Files\Python314\python.exe'
+$dir = $PSScriptRoot
+if (-not $dir) { $dir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+$python = $env:CANARYGUARD_PYTHON
+if (-not $python) {
+    $cmd = Get-Command python.exe -ErrorAction SilentlyContinue
+    if ($cmd) { $python = $cmd.Source } else { $python = 'python.exe' }
+}
 $out = "$dir\control.out.log"
 $err = "$dir\control.err.log"
 

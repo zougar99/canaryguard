@@ -13,7 +13,7 @@
 # -----------------------------------------------------------------------------
 set -euo pipefail
 
-DOMAIN="${1:-wer5huiu.ddns.net}"
+DOMAIN="${1:?usage: bash deploy-pi.sh <your-ddns-domain-or-ip> [port]}"
 PORT="${2:-8080}"
 APP_DIR="/opt/canaryguard"
 LOG_DIR="/opt/canaryguard/logs"

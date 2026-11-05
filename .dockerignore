@@ -1,0 +1,15 @@
+.git
+.github
+__pycache__/
+*.pyc
+*.db
+*.db-wal
+*.db-shm
+config.json
+secret.key
+feeds/
+CanaryDecoys/
+evidence_*.zip
+*.log
+.pytest_cache/
+docs/

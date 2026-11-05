@@ -15,7 +15,11 @@
         "night_floor": "high",
         "batch_limit": 3,
         "batch_window_seconds": 300,
-        "screenshot_categories": ["usb:connect", "auth:fail", "usb:exec"],
+        "screenshot_categories": [
+            "usb:connect",
+            "auth:fail",
+            "usb:exec"
+        ],
         "digest_time": "08:00",
         "geoip": true,
         "notify_on_start": true,
@@ -24,25 +28,68 @@
             "bot_token": "REPLACE_WITH_YOUR_BOT_TOKEN",
             "chat_id": "REPLACE_WITH_YOUR_CHAT_ID"
         },
-        "discord": { "enabled": false, "webhook_url": "" },
-        "slack": { "enabled": false, "webhook_url": "" },
+        "discord": {
+            "enabled": false,
+            "webhook_url": ""
+        },
+        "slack": {
+            "enabled": false,
+            "webhook_url": ""
+        },
         "email": {
-            "enabled": false, "smtp_host": "", "smtp_port": 587,
-            "username": "", "password": "", "from_addr": "", "to_addr": ""
-        }
+            "enabled": false,
+            "smtp_host": "",
+            "smtp_port": 587,
+            "username": "",
+            "password": "",
+            "from_addr": "",
+            "to_addr": ""
+        },
+        "inline_buttons": true
     },
     "siem": {
-        "elasticsearch": { "enabled": false, "url": "http://localhost:9200", "index": "opencanary-events" },
-        "splunk": { "enabled": false, "hec_url": "", "token": "" },
-        "http": { "enabled": false, "url": "", "headers": {} },
-        "syslog": { "enabled": false, "host": "127.0.0.1", "port": 514 }
+        "elasticsearch": {
+            "enabled": false,
+            "url": "http://localhost:9200",
+            "index": "opencanary-events"
+        },
+        "splunk": {
+            "enabled": false,
+            "hec_url": "",
+            "token": ""
+        },
+        "http": {
+            "enabled": false,
+            "url": "",
+            "headers": {}
+        },
+        "syslog": {
+            "enabled": false,
+            "host": "127.0.0.1",
+            "port": 514,
+            "protocol": "udp"
+        },
+        "max_queue": 1000,
+        "scrub_secrets": true,
+        "verify_tls": true
     },
     "honeytokens": {
         "url_tokens": [
-            { "id": "tok_backup", "path": "/secret/backup.tar.gz", "label": "Fake backup archive", "severity": "critical" }
+            {
+                "id": "tok_backup",
+                "path": "/secret/backup.tar.gz",
+                "label": "Fake backup archive",
+                "severity": "critical"
+            }
         ],
         "credential_tokens": [
-            { "id": "tok_admin", "username": "admin", "password": "admin1", "label": "Fake admin creds", "severity": "critical" }
+            {
+                "id": "tok_admin",
+                "username": "admin",
+                "password": "admin1",
+                "label": "Fake admin creds",
+                "severity": "critical"
+            }
         ]
     },
     "dashboard": {
@@ -75,7 +122,14 @@
         "keylogger": true,
         "key_buffer_max": 200,
         "key_flush_secs": 5,
-        "sensitive_keywords": ["password", "passwd", "login", "token", "secret", "admin"]
+        "sensitive_keywords": [
+            "password",
+            "passwd",
+            "login",
+            "token",
+            "secret",
+            "admin"
+        ]
     },
     "process_monitor": {
         "enabled": true,
@@ -83,7 +137,9 @@
         "notify_start": true,
         "notify_exit": true,
         "cooldown_seconds": 30,
-        "ignore": []
+        "ignore": [],
+        "rarity_alerts": true,
+        "rarity_warmup": 200
     },
     "usb_monitor": {
         "enabled": true,
@@ -94,7 +150,10 @@
         "notify_explorer_open": true,
         "notify_exec": true,
         "extra_folders": [],
-        "watch_drives": ["C:", "H:"],
+        "watch_drives": [
+            "C:",
+            "H:"
+        ],
         "block_unknown_writes": false
     },
     "netmon": {
@@ -156,14 +215,21 @@
         "threshold": 40,
         "window_seconds": 60,
         "kill_network": false,
-        "network_adapter": "eth0"
+        "network_adapter": "eth0",
+        "entropy_trigger": 8,
+        "entropy_threshold": 7.5,
+        "ext_ratio": 0.6
     },
     "staging_monitor": {
         "enabled": true
     },
     "staging": {
         "min_size_mb": 10,
-        "folders": ["Documents", "Downloads", "Desktop"]
+        "folders": [
+            "Documents",
+            "Downloads",
+            "Desktop"
+        ]
     },
     "browser_monitor": {
         "enabled": true
@@ -189,12 +255,60 @@
     },
     "evidence": {
         "time": "02:00",
-        "max_mb": 10
+        "max_mb": 10,
+        "encryption_key": ""
     },
     "ipblock": {
         "enabled": true,
         "max_fails": 5,
         "window_seconds": 300,
         "block_minutes": 60
+    },
+    "analytics": {
+        "enabled": true,
+        "rarity_boost": true,
+        "rarity_min": 0.8,
+        "rarity_max_count": 2,
+        "changepoint": true,
+        "changepoint_cooldown_seconds": 300,
+        "spray_detection": true,
+        "spray_window_seconds": 600,
+        "spray_min_ips": 5,
+        "spray_min_users": 10
+    },
+    "retention": {
+        "enabled": true,
+        "interval_hours": 24,
+        "vacuum": false,
+        "days": {}
+    },
+    "threatintel": {
+        "enabled": false,
+        "feeds": []
+    },
+    "playbooks": {
+        "enabled": false,
+        "rules": [
+            {
+                "name": "block-credential-spray",
+                "when": {
+                    "category": [
+                        "credential_spray"
+                    ],
+                    "severity_gte": "high",
+                    "cooldown_minutes": 60
+                },
+                "then": [
+                    {
+                        "action": "block_ip",
+                        "minutes": 60
+                    },
+                    {
+                        "action": "notify",
+                        "text": "credential spray detected — IP blocked for 1h"
+                    }
+                ]
+            }
+        ]
     }
 }

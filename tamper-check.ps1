@@ -4,7 +4,8 @@
 # silence alerts during intentional maintenance.
 
 $ErrorActionPreference = 'SilentlyContinue'
-$dir = 'C:\Users\werlist99\canaryguard'
+$dir = $PSScriptRoot
+if (-not $dir) { $dir = Split-Path -Parent $MyInvocation.MyCommand.Path }
 $cfg = Get-Content "$dir\config.json" -Raw | ConvertFrom-Json
 $tg = $cfg.alerts.telegram
 

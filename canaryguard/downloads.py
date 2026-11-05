@@ -49,7 +49,7 @@ class DownloadsSentinel:
         self.store = get_store(config)
         self.alerts = alerts
         self.folder = config.get("downloads_monitor", "folder",
-                                 default=r"C:\Users\werlist99\Downloads")
+                                 default=os.path.join(os.path.expanduser("~"), "Downloads"))
         self.notify = config.get("downloads_monitor", "notify", default=True)
         extra = set(config.get("downloads_monitor", "extensions", default=[]))
         self.exts = {e.lower() for e in DANGEROUS_EXT} | {e.lower() for e in extra}

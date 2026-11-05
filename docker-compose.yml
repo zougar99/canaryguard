@@ -1,0 +1,23 @@
+services:
+  canaryguard:
+    build: .
+    image: canaryguard:latest
+    container_name: canaryguard
+    ports:
+      - "127.0.0.1:8080:8080"   # dashboard stays local; front it with a VPN/reverse proxy
+    environment:
+      CANARYGUARD_HOME: /data
+      # CANARYGUARD_SECRET_KEY: ""  # optional; else <home>/secret.key is generated
+    volumes:
+      - ./config.json:/app/config.json:ro
+      - canaryguard-data:/data
+      # point opencanary.log_file in config.json at this mount:
+      - ${OPENCANARY_LOG:-/var/log/opencanary/opencanary.log}:/var/log/opencanary/opencanary.log:ro
+    restart: unless-stopped
+    cap_add:
+      - NET_ADMIN   # only needed for netsh/firewall-style auto-block on Linux (iptables)
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  canaryguard-data:

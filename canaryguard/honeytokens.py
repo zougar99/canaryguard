@@ -5,9 +5,10 @@ import threading
 from .alerts import AlertManager
 from .classifier import classify
 from .config import get_store
+from .paths import state_file
 from .geolocate import GeoLocator
 
-HONEYTOKEN_FILE = "C:\\Users\\werlist99\\canaryguard\\canaryguard\\honeytokens_state.json"
+HONEYTOKEN_FILE = state_file("honeytokens_state.json")
 
 
 class HoneytokenManager:
