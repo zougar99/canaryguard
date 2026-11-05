@@ -70,7 +70,8 @@ class TelegramCommandBot:
         for name, obj in sorted(self.monitors.items()):
             ev = getattr(obj, "_stop", None)
             alive = bool(ev and not ev.is_set())
-            lines.append(f"  {'\u2705' if alive else '\u2753'} {name}")
+            _icon = '\u2705' if alive else '\u2753'
+            lines.append(f"  {_icon} {name}")
         try:
             total = self.alerts.store.total_events()
             lines.append(f"\U0001f4c5 events in DB: {total}")

@@ -23,7 +23,6 @@ from canaryguard.tgbot import TelegramCommandBot as TGBot
 from canaryguard.usbdisk import USBDiskMonitor
 from canaryguard.webapp import DashboardServer
 
-BASE = r"C:\Users\werlist99\canaryguard"
 IS_WINDOWS = sys.platform.startswith("win")
 
 if IS_WINDOWS:
@@ -172,6 +171,22 @@ def main():
         print("[main] another CanaryGuard instance is already running - exiting")
         return
     config = Config.load()
+    # fail-visible config validation: collect every issue at once
+    try:
+        from canaryguard.validation import validate_config
+
+        for issue in validate_config(config.data):
+            print(f"[config] WARN: {issue}")
+    except Exception as exc:
+        print(f"[config] validation skipped: {exc}")
+    retention = None
+    try:
+        from canaryguard.maintenance import RetentionJob
+
+        retention = RetentionJob(config)
+        retention.start()
+    except Exception as exc:
+        print(f"[retention] failed to start: {exc}")
     ipb = None
     if IS_WINDOWS:
         ipb = IPBlocker(config)
@@ -340,6 +355,8 @@ def main():
             sesmon.stop()
         if kl:
             kl.stop()
+        if retention:
+            retention.stop()
         ing.stop()
 
     if runtime.mode != "restarting":

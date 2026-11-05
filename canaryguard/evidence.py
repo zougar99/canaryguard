@@ -25,6 +25,7 @@ class EvidenceBackup:
         self.enabled = cfg.get("enabled", True)
         self.time = cfg.get("time", "02:00")
         self.max_mb = int(cfg.get("max_mb", 10))
+        self.encryption_key = (cfg.get("encryption_key", "") or "").strip()
         self.db_file = config.get("opencanary", "db_file")
         if not self.db_file:
             raise RuntimeError("[evidence] no opencanary.db_file configured")
@@ -55,16 +56,27 @@ class EvidenceBackup:
             with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
                 zf.writestr("canaryguard.db", self._compact())
             data = open(zip_path, "rb").read()
+            os.remove(zip_path)
+            filename = os.path.basename(zip_path)
+            if self.encryption_key:
+                # encrypt with a user-held key (NOT the host's secret.key) so the
+                # Telegram-stored backup is unreadable without the offline key
+                try:
+                    from cryptography.fernet import Fernet
+
+                    data = Fernet(self.encryption_key.encode("ascii")).encrypt(data)
+                    filename = filename + ".enc"
+                except Exception as exc:
+                    self.logger(f"[evidence] encryption failed, sending unencrypted: {exc}")
             if len(data) > self.max_mb * 1_048_576:
                 self.logger(f"[evidence] compact backup too large ({len(data)//1048576} MB), skipping")
-                os.remove(zip_path)
                 return
             self.alerts.send_document(
                 data,
-                filename=os.path.basename(zip_path),
-                caption=f"\U0001f4c2 evidence backup {ts} ({len(data)//1024} KB)",
+                filename=filename,
+                caption=f"\U0001f4c2 evidence backup {ts} ({len(data)//1024} KB)"
+                        + (" [encrypted]" if filename.endswith(".enc") else ""),
             )
-            os.remove(zip_path)
             self.logger(f"[evidence] backup sent ({len(data)//1024} KB)")
         except Exception as exc:
             self.logger(f"[evidence] backup failed: {exc}")
@@ -79,7 +91,7 @@ class EvidenceBackup:
             src = sqlite3.connect(self.db_file, check_same_thread=False)
             dst = sqlite3.connect(tmp)
             src.backup(dst)
-            dst.execute("DELETE FROM events WHERE ts < datetime('now', '-90 days')")
+            dst.execute("DELETE FROM events WHERE ts < datetime('now','localtime', '-90 days')")
             dst.commit()
             dst.close()
             src.close()

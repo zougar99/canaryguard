@@ -12,7 +12,7 @@ from PIL import Image
 from .config import get_store
 from .decoys import beacon_url, new_token_id
 
-DEFAULT_FOLDER = r"C:\Users\werlist99\CanaryDecoys\embedded"
+DEFAULT_FOLDER = os.path.join(os.path.expanduser("~"), "CanaryDecoys", "embedded")
 
 
 def _now():

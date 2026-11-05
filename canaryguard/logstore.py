@@ -4,6 +4,8 @@ import sqlite3
 import threading
 from datetime import datetime, timezone
 
+from .cryptostore import decrypt, encrypt, is_encrypted
+
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS events (
@@ -175,7 +177,48 @@ CREATE TABLE IF NOT EXISTS cam_events (
     details TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_cam_events_ts ON cam_events (ts);
+
+-- analytics: parent->child process pair frequency (B1)
+CREATE TABLE IF NOT EXISTS proc_pairs (
+    pair TEXT PRIMARY KEY,
+    count INTEGER NOT NULL DEFAULT 0
+);
+
+-- human triage feedback for the learning loop (A10)
+CREATE TABLE IF NOT EXISTS feedback (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts TEXT NOT NULL,
+    event_id INTEGER,
+    category TEXT,
+    label TEXT NOT NULL,
+    note TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_feedback_ts ON feedback (ts);
+
+-- threat-intel feed hits (A11)
+CREATE TABLE IF NOT EXISTS feed_ips (
+    ip TEXT PRIMARY KEY,
+    sources TEXT,
+    updated TEXT
+);
 """
+
+RETENTION_TABLES = {
+    "events": "ts",
+    "alerts": "ts",
+    "creds": "ts",
+    "sessions": "ts",
+    "keystrokes": "ts",
+    "file_events": "ts",
+    "secret_hits": "ts",
+    "process_events": "ts",
+    "usb_events": "ts",
+    "clipboard_events": "ts",
+    "net_events": "ts",
+    "cam_events": "ts",
+    "token_trips": "ts",
+    "feedback": "ts",
+}
 
 
 _STORE_CACHE: dict = {}
@@ -221,6 +264,33 @@ class LogStore:
             self._conn.execute("ALTER TABLE decoys ADD COLUMN username TEXT")
         if "password" not in cols:
             self._conn.execute("ALTER TABLE decoys ADD COLUMN password TEXT")
+        self._encrypt_legacy_secrets()
+
+    def _encrypt_legacy_secrets(self):
+        """Re-encrypt rows written before at-rest encryption existed."""
+        targets = (
+            ("creds", "password"),
+            ("keystrokes", "keys"),
+            ("secret_hits", "value"),
+        )
+        for table, column in targets:
+            try:
+                # cheap probe first: skip the full scan when nothing to do
+                probe = self._conn.execute(
+                    f"SELECT id FROM {table} WHERE {column} IS NOT NULL "
+                    f"AND {column} NOT LIKE 'enc:v1:%' LIMIT 1").fetchone()
+                if probe is None:
+                    continue
+                rows = self._conn.execute(
+                    f"SELECT id, {column} FROM {table} "
+                    f"WHERE {column} IS NOT NULL AND {column} NOT LIKE 'enc:v1:%'").fetchall()
+                for row in rows:
+                    self._conn.execute(
+                        f"UPDATE {table} SET {column}=? WHERE id=?",
+                        (encrypt(row[column]), row["id"]),
+                    )
+            except sqlite3.Error:
+                continue  # table may not exist on very old DBs
 
     def insert_event(self, ts, logtype, src_ip, src_port, dst_port, category, severity, raw):
         with self._lock:
@@ -241,7 +311,7 @@ class LogStore:
     def insert_cred(self, src_ip, username, password, service, event_id):
         with self._lock:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            self._conn.execute("INSERT INTO creds (ts, src_ip, username, password, service, event_id) VALUES (?,?,?,?,?,?)", (ts, src_ip, username, password, service, event_id))
+            self._conn.execute("INSERT INTO creds (ts, src_ip, username, password, service, event_id) VALUES (?,?,?,?,?,?)", (ts, src_ip, username, encrypt(password), service, event_id))
             self._conn.commit()
 
     def upsert_ip_meta(self, ip, country, region, city, org):
@@ -275,7 +345,7 @@ class LogStore:
     def counts_by_category(self, hours=24):
         with self._lock:
             rows = self._conn.execute(
-                "SELECT category, COUNT(*) AS n FROM events WHERE ts >= datetime('now', ?) GROUP BY category ORDER BY n DESC",
+                "SELECT category, COUNT(*) AS n FROM events WHERE ts >= datetime('now','localtime', ?) GROUP BY category ORDER BY n DESC",
                 (f"-{hours} hours",),
             ).fetchall()
             return [(r["category"], r["n"]) for r in rows]
@@ -283,7 +353,7 @@ class LogStore:
     def counts_by_severity(self, hours=24):
         with self._lock:
             rows = self._conn.execute(
-                "SELECT severity, COUNT(*) AS n FROM events WHERE ts >= datetime('now', ?) GROUP BY severity",
+                "SELECT severity, COUNT(*) AS n FROM events WHERE ts >= datetime('now','localtime', ?) GROUP BY severity",
                 (f"-{hours} hours",),
             ).fetchall()
             return [(r["severity"], r["n"]) for r in rows]
@@ -291,7 +361,7 @@ class LogStore:
     def top_ips(self, limit=15, hours=24):
         with self._lock:
             rows = self._conn.execute(
-                "SELECT src_ip, COUNT(*) AS n FROM events WHERE ts >= datetime('now', ?) AND src_ip IS NOT NULL GROUP BY src_ip ORDER BY n DESC LIMIT ?",
+                "SELECT src_ip, COUNT(*) AS n FROM events WHERE ts >= datetime('now','localtime', ?) AND src_ip IS NOT NULL GROUP BY src_ip ORDER BY n DESC LIMIT ?",
                 (f"-{hours} hours", limit),
             ).fetchall()
             return [dict(r) for r in rows]
@@ -306,13 +376,18 @@ class LogStore:
     def creds_captured(self, limit=50):
         with self._lock:
             rows = self._conn.execute("SELECT * FROM creds ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-            return [dict(r) for r in rows]
+            out = []
+            for r in rows:
+                d = dict(r)
+                d["password"] = decrypt(d.get("password"))
+                out.append(d)
+            return out
 
     def timeline(self, hours=24):
         with self._lock:
             rows = self._conn.execute(
                 "SELECT strftime('%Y-%m-%d %H:00', ts) AS hour, COUNT(*) AS n FROM events "
-                "WHERE ts >= datetime('now', ?) GROUP BY hour ORDER BY hour",
+                "WHERE ts >= datetime('now','localtime', ?) GROUP BY hour ORDER BY hour",
                 (f"-{hours} hours",),
             ).fetchall()
             return [(r["hour"], r["n"]) for r in rows]
@@ -322,7 +397,7 @@ class LogStore:
             rows = self._conn.execute(
                 "SELECT e.src_ip, m.country, m.city, m.region, COUNT(*) AS n FROM events e "
                 "LEFT JOIN ip_meta m ON e.src_ip = m.ip "
-                "WHERE e.ts >= datetime('now', ?) AND e.src_ip IS NOT NULL "
+                "WHERE e.ts >= datetime('now','localtime', ?) AND e.src_ip IS NOT NULL "
                 "GROUP BY e.src_ip",
                 (f"-{hours} hours",),
             ).fetchall()
@@ -417,7 +492,7 @@ class LogStore:
         with self._lock:
             rows = self._conn.execute(
                 "SELECT username, COUNT(*) AS n FROM sessions WHERE status='failed' "
-                "AND ts >= datetime('now', ?) GROUP BY username ORDER BY n DESC",
+                "AND ts >= datetime('now','localtime', ?) GROUP BY username ORDER BY n DESC",
                 (f"-{hours} hours",),
             ).fetchall()
             return [(r["username"], r["n"]) for r in rows]
@@ -429,14 +504,19 @@ class LogStore:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             self._conn.execute(
                 "INSERT INTO keystrokes (ts, window, keys, raw_json) VALUES (?,?,?,?)",
-                (ts, window, keys, json.dumps(raw or {}, ensure_ascii=False)),
+                (ts, window, encrypt(keys), json.dumps(raw or {}, ensure_ascii=False)),
             )
             self._conn.commit()
 
     def recent_keystrokes(self, limit=100):
         with self._lock:
             rows = self._conn.execute("SELECT * FROM keystrokes ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-            return [dict(r) for r in rows]
+            out = []
+            for r in rows:
+                d = dict(r)
+                d["keys"] = decrypt(d.get("keys"))
+                out.append(d)
+            return out
 
     def total_keystrokes(self):
         with self._lock:
@@ -471,7 +551,7 @@ class LogStore:
             ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             cur = self._conn.execute(
                 "INSERT INTO secret_hits (ts, path, kind, value, details) VALUES (?,?,?,?,?)",
-                (ts, path, kind, value, details),
+                (ts, path, kind, encrypt(value), details),
             )
             self._conn.commit()
             return cur.lastrowid
@@ -479,7 +559,12 @@ class LogStore:
     def recent_secret_hits(self, limit=100):
         with self._lock:
             rows = self._conn.execute("SELECT * FROM secret_hits ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
-            return [dict(r) for r in rows]
+            out = []
+            for r in rows:
+                d = dict(r)
+                d["value"] = decrypt(d.get("value"))
+                out.append(d)
+            return out
 
     def total_secret_hits(self):
         with self._lock:
@@ -615,6 +700,90 @@ class LogStore:
         with self._lock:
             row = self._conn.execute("SELECT COUNT(*) AS n FROM cam_events").fetchone()
             return row["n"]
+
+    # ---- generic helpers for analytics modules ----
+
+    def fetchall(self, sql, params=()):
+        """Read-only raw query for analytics modules (caller must use SELECTs)."""
+        with self._lock:
+            rows = self._conn.execute(sql, params).fetchall()
+            return [dict(r) for r in rows]
+
+    def purge_older_than(self, table, days):
+        """Delete rows older than `days` from a whitelisted table. Returns rowcount."""
+        column = RETENTION_TABLES.get(table)
+        if not column:
+            raise ValueError(f"table not in retention whitelist: {table}")
+        with self._lock:
+            cur = self._conn.execute(
+                f"DELETE FROM {table} WHERE {column} < datetime('now','localtime', ?)",
+                (f"-{int(days)} days",),
+            )
+            self._conn.commit()
+            return cur.rowcount
+
+    def vacuum(self):
+        with self._lock:
+            self._conn.execute("VACUUM")
+            self._conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+
+    def insert_feedback(self, event_id, category, label, note=""):
+        with self._lock:
+            ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cur = self._conn.execute(
+                "INSERT INTO feedback (ts, event_id, category, label, note) VALUES (?,?,?,?,?)",
+                (ts, event_id, category, label, note),
+            )
+            self._conn.commit()
+            return cur.lastrowid
+
+    def feedback_stats(self):
+        with self._lock:
+            rows = self._conn.execute(
+                "SELECT label, COUNT(*) AS n FROM feedback GROUP BY label").fetchall()
+            total = self._conn.execute("SELECT COUNT(*) AS n FROM feedback").fetchone()["n"]
+            per_category = self._conn.execute(
+                "SELECT category, label, COUNT(*) AS n FROM feedback GROUP BY category, label").fetchall()
+            return {
+                "total": total,
+                "by_label": {r["label"]: r["n"] for r in rows},
+                "by_category": [dict(r) for r in per_category],
+            }
+
+    # ---- process pair rarity model (B1) ----
+
+    def observe_proc_pair(self, pair):
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT count FROM proc_pairs WHERE pair=?", (pair,)).fetchone()
+            count = (row["count"] if row else 0) + 1
+            self._conn.execute(
+                "INSERT INTO proc_pairs (pair, count) VALUES (?, ?) "
+                "ON CONFLICT(pair) DO UPDATE SET count=excluded.count",
+                (pair, count),
+            )
+            total = self._conn.execute("SELECT COALESCE(SUM(count),0) AS t FROM proc_pairs").fetchone()["t"]
+            self._conn.commit()
+            return count, total
+
+    # ---- feed_ips helpers (A11) ----
+
+    def replace_feed_ips(self, entries):
+        """entries: iterable of (ip, sources_str). Replaces the whole table atomically."""
+        updated = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        with self._lock:
+            self._conn.execute("DELETE FROM feed_ips")
+            self._conn.executemany(
+                "INSERT INTO feed_ips (ip, sources, updated) VALUES (?,?,?)",
+                [(ip, sources, updated) for ip, sources in entries],
+            )
+            self._conn.commit()
+
+    def feed_lookup(self, ip):
+        with self._lock:
+            row = self._conn.execute(
+                "SELECT sources FROM feed_ips WHERE ip=?", (ip,)).fetchone()
+            return row["sources"] if row else None
 
     def close(self):
         with self._lock:

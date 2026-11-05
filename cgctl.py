@@ -276,7 +276,8 @@ class ControlSupervisor:
         path = "/api/mute" if on else "/api/unmute"
         try:
             self.session.post(f"{API}{path}", json={"category": cat}, timeout=8)
-            self.reply(chat_id, f"{'\U0001f507 muted' if on else '\U0001f50a unmuted'}: "
+            _icon = '\U0001f507 muted' if on else '\U0001f50a unmuted'
+            self.reply(chat_id, f"{_icon}: "
                                  f"{html.escape(cat)}", thread)
         except Exception as exc:
             self.reply(chat_id, f"\u274c {html.escape(str(exc))}", thread)
@@ -346,6 +347,62 @@ class ControlSupervisor:
             log(f"handler error cmd={cmd}: {exc}")
             self.reply(chat_id, f"\u274c error: {html.escape(str(exc))}", thread)
 
+    # ------------------------------------------------------------ inline keyboard callbacks
+
+    def handle_callback(self, cb):
+        data = (cb.get("data") or "").strip()
+        cb_id = cb.get("id", "")
+        message = cb.get("message") or {}
+        chat = message.get("chat") or {}
+        sender = cb.get("from") or {}
+
+        def answer(text):
+            try:
+                self.api("answerCallbackQuery", callback_query_id=cb_id, text=str(text)[:180])
+            except Exception as exc:
+                log(f"answerCallbackQuery failed: {exc}")
+
+        if not self.chat_allowed(chat):
+            answer("not allowed")
+            log(f"denied callback chat={chat.get('id')} user={sender.get('id')} data={data}")
+            return
+        if chat.get("type") in ("group", "supergroup") and self.admin_ids:
+            if str(sender.get("id")) not in self.admin_ids:
+                answer("not allowed for this user")
+                return
+
+        if data == "ack":
+            answer("Acknowledged ✓")
+            log(f"callback ack chat={chat.get('id')}")
+            return
+        if data.startswith("mute:"):
+            cat = data[5:].strip().lower()
+            try:
+                self.session.post(f"{API}/api/mute", json={"category": cat}, timeout=8)
+                answer(f"muted: {cat}")
+                log(f"callback mute={cat} chat={chat.get('id')}")
+            except Exception as exc:
+                answer(f"mute failed: {exc}")
+            return
+        if data.startswith("block:"):
+            ip = data[6:].strip()
+            try:
+                resp = self.session.post(f"{API}/api/ipblock/block", json={"ip": ip}, timeout=10)
+                body = {}
+                try:
+                    body = resp.json()
+                except Exception:
+                    pass
+                if resp.ok and not body.get("error"):
+                    answer(f"blocked: {ip}")
+                else:
+                    answer(f"block failed: {body.get('error', resp.status_code)}")
+                log(f"callback block ip={ip} chat={chat.get('id')}")
+            except Exception as exc:
+                answer(f"block failed: {exc}")
+            return
+        answer("unknown action")
+
     # ------------------------------------------------------------ loop
 
     def run(self):
@@ -367,6 +424,10 @@ class ControlSupervisor:
                 backoff = 5
                 for upd in data.get("result") or []:
                     self.offset = max(self.offset, upd.get("update_id", 0) + 1)
+                    cb = upd.get("callback_query")
+                    if cb:
+                        self.handle_callback(cb)
+                        continue
                     msg = (upd.get("message") or upd.get("edited_message")
                            or upd.get("channel_post") or upd.get("edited_channel_post"))
                     if msg:

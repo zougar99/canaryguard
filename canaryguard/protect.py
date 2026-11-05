@@ -6,10 +6,10 @@ from datetime import datetime
 from .config import get_store
 
 DEFAULT_FOLDERS = [
-    r"C:\Users\werlist99\Desktop",
-    r"C:\Users\werlist99\Documents",
-    r"C:\Users\werlist99\Downloads",
-    r"C:\Users\werlist99\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup",
+    os.path.join(os.path.expanduser("~"), "Desktop"),
+    os.path.join(os.path.expanduser("~"), "Documents"),
+    os.path.join(os.path.expanduser("~"), "Downloads"),
+    os.path.join(os.path.expanduser("~"), "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs", "Startup"),
 ]
 
 SUSPICIOUS_EXT = {".exe", ".dll", ".bat", ".cmd", ".ps1", ".vbs", ".js", ".jse", ".hta", ".scr", ".py", ".jar", ".lnk"}
@@ -160,10 +160,10 @@ class Cleanup:
     def _recent_paths(self, minutes=120):
         cutoff = time.time() - minutes * 60
         scan_dirs = [
-            os.environ.get("TEMP", r"C:\Users\werlist99\AppData\Local\Temp"),
-            r"C:\Users\werlist99\Downloads",
-            r"C:\Users\werlist99\AppData\Roaming\Microsoft\Windows\Start Menu\Programs\Startup",
-            r"C:\Users\werlist99\AppData\Local\Temp",
+            os.environ.get("TEMP", os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp")),
+            os.path.join(os.path.expanduser("~"), "Downloads"),
+            os.path.join(os.path.expanduser("~"), "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs", "Startup"),
+            os.path.join(os.path.expanduser("~"), "AppData", "Local", "Temp"),
         ]
         found = []
         for d in scan_dirs:

@@ -49,6 +49,17 @@ class ProcessMonitor:
         self.cooldown = int(config.get("process_monitor", "cooldown_seconds", default=30))
         extra = set(config.get("process_monitor", "ignore", default=[]))
         self.ignore = DEFAULT_IGNORE | {x.lower() for x in extra}
+        self.rarity_pairs = None
+        if config.get("process_monitor", "rarity_alerts", default=True):
+            try:
+                from .processgraph import ProcessPairModel
+
+                self.rarity_pairs = ProcessPairModel(
+                    config, store=self.store,
+                    warmup=int(config.get("process_monitor", "rarity_warmup", default=200)),
+                )
+            except Exception as exc:
+                self.logger(f"[procs] parent-child rarity unavailable: {exc}")
         self._stop = threading.Event()
         self._thread = None
         self._last = {}
@@ -99,6 +110,15 @@ class ProcessMonitor:
         if cmd:
             details += f" cmd={cmd[:120]}"
         self.store.insert_process_event(ev_type, name, pid, path, user, details)
+
+        # B1: never-seen parent->child pair (living-off-the-land signal)
+        if ev_type == "started" and self.rarity_pairs and parent:
+            try:
+                obs = self.rarity_pairs.observe(parent, name)
+                if obs and obs["is_rare"]:
+                    self._alert_rare_pair(obs, user, pid, cmd)
+            except Exception as exc:
+                self.logger(f"[procs] pair rarity error: {exc}")
         label = "APP OPENED" if ev_type == "started" else "APP CLOSED"
         self.logger(f"[procs] {label}: {name} (pid={pid})" + (f" parent={parent}" if parent else ""))
 
@@ -124,6 +144,19 @@ class ProcessMonitor:
         )
         event = {"src_host": "local", "src_port": -1, "dst_port": -1, "local_time": now, "ts": now}
         self.alerts.send(event, f"proc:{'start' if ev_type == 'started' else 'exit'}", "medium", msg)
+
+    def _alert_rare_pair(self, obs, user, pid, cmd):
+        self.logger(f"[procs] RARE PAIR: {obs['pair']} (never seen before)")
+        if not self.alerts:
+            return
+        now = _now()
+        lines = [f"pair: {obs['pair']}", f"user: {user or 'local'}", f"pid: {pid}"]
+        if cmd:
+            lines.append(f"cmd: {cmd[:150]}")
+        lines.append("this parent->child combination has never been observed on this host")
+        lines.append(f"time: {now}")
+        event = {"src_host": "local", "src_port": -1, "dst_port": -1, "local_time": now, "ts": now}
+        self.alerts.send(event, "proc:rare_parent", "high", "\n".join(lines))
 
     # ---------- loop ----------
 

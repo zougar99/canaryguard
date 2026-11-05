@@ -78,6 +78,8 @@ class AlertManager:
         # screenshot attachments for critical categories
         self.shot_categories = {c.lower() for c in (cfg.get("screenshot_categories", None) or ["usb:connect", "auth:fail", "usb:exec"])}
         self.digest_time = cfg.get("digest_time", "08:00")
+        # D7: attach inline [Ack] [Mute] [Block] keyboard to high/critical Telegram alerts
+        self.inline_buttons = bool(cfg.get("inline_buttons", False))
         self.telegram = cfg.get("telegram", {})
         self.discord = cfg.get("discord", {})
         self.slack = cfg.get("slack", {})
@@ -158,7 +160,7 @@ class AlertManager:
             msg += f"\n<code>{bar}</code>\n{e_extra}"
 
         subject = f"OpenCanary [{severity}] {category} from {src}"
-        self._dispatch(subject, msg, severity, event)
+        self._dispatch(subject, msg, severity, event, category, src)
 
         # attach screenshot for critical categories
         if severity in ("high", "critical") and category.lower() in self.shot_categories and \
@@ -167,7 +169,25 @@ class AlertManager:
             if shot:
                 self.send_photo(shot, caption=f"\U0001f4f8 screenshot @ {category}")
 
-    def _dispatch(self, subject, msg, severity, event):
+    def _buttons_for(self, category, src, severity):
+        if not self.inline_buttons or severity not in ("high", "critical") or not category:
+            return None
+
+        def _clip(text, limit=59):
+            return text[:limit]
+
+        row = [
+            {"text": "\u2705 Ack", "callback_data": "ack"},
+            {"text": f"\U0001f507 Mute {category}"[:40], "callback_data": _clip(f"mute:{category}")},
+        ]
+        keyboard = [row]
+        if src and src not in ("", "-", "127.0.0.1", "::1", "local"):
+            keyboard.append([
+                {"text": f"\U0001f6ab Block {src}", "callback_data": _clip(f"block:{src}")},
+            ])
+        return {"inline_keyboard": keyboard}
+
+    def _dispatch(self, subject, msg, severity, event, category=None, src=""):
         channels = []
         if self.telegram.get("enabled") and self.telegram.get("bot_token"):
             channels.append(("telegram", self._send_telegram))
@@ -177,6 +197,8 @@ class AlertManager:
             channels.append(("slack", self._send_slack))
         if self.email.get("enabled") and self.email.get("smtp_host"):
             channels.append(("email", self._send_email))
+
+        tg_buttons = self._buttons_for(category, str(src or ""), severity) if self.inline_buttons else None
 
         for name, fn in channels:
             key = (name, subject)
@@ -194,7 +216,10 @@ class AlertManager:
             sent = False
             for attempt in range(1, self.retries + 1):
                 try:
-                    fn(subject, out)
+                    if name == "telegram" and tg_buttons is not None:
+                        self._send_telegram(subject, out, buttons=tg_buttons)
+                    else:
+                        fn(subject, out)
                     sent = True
                     break
                 except Exception as exc:
@@ -317,13 +342,12 @@ class AlertManager:
             ok.append("telegram")
         return ok
 
-    def _send_telegram(self, subject, msg):
+    def _send_telegram(self, subject, msg, buttons=None):
         url = f"https://api.telegram.org/bot{self.telegram['bot_token']}/sendMessage"
-        r = self._http.post(
-            url,
-            json={"chat_id": self.telegram["chat_id"], "text": msg, "parse_mode": "HTML"},
-            timeout=10,
-        )
+        payload = {"chat_id": self.telegram["chat_id"], "text": msg, "parse_mode": "HTML"}
+        if buttons:
+            payload["reply_markup"] = buttons
+        r = self._http.post(url, json=payload, timeout=10)
         r.raise_for_status()
 
     def _send_discord(self, subject, msg):

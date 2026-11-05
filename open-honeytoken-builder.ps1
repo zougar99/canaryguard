@@ -1,1 +1,5 @@
-Start-Process -FilePath 'C:\Program Files\Python314\pythonw.exe' -ArgumentList 'C:\Users\werlist99\canaryguard\honeytoken_builder.py' -WorkingDirectory 'C:\Users\werlist99\canaryguard'
+$dir = $PSScriptRoot
+if (-not $dir) { $dir = Split-Path -Parent $MyInvocation.MyCommand.Path }
+$pythonw = $env:CANARYGUARD_PYTHONW
+if (-not $pythonw) { $pythonw = 'pythonw.exe' }
+Start-Process -FilePath $pythonw -ArgumentList (Join-Path $dir 'honeytoken_builder.py') -WorkingDirectory $dir
