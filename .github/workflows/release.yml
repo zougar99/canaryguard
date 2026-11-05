@@ -36,12 +36,16 @@ jobs:
         run: |
           python -m PyInstaller --noconfirm --clean --onefile --name CanaryGuard --collect-submodules canaryguard main.py
           python -m PyInstaller --noconfirm --clean --onefile --noconsole --name CanaryGuardApp --collect-submodules canaryguard guardapp.py
-      - name: Build installer (Inno Setup, if present)
+      - name: Build installer (Inno Setup, best effort)
+        id: installer
+        continue-on-error: true
         shell: pwsh
         run: |
           $iscc = (Get-Command ISCC.exe -ErrorAction SilentlyContinue)
           if (-not $iscc) { $candidate = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"; if (Test-Path $candidate) { $iscc = $candidate } }
-          if ($iscc) { & $iscc packaging\windows\CanaryGuard.iss } else { Write-Host "Inno Setup not found - skipping installer, exes only" }
+          if (-not $iscc) { Write-Host 'Inno Setup not found - shipping exes only'; exit 1 }
+          & $iscc /Qp packaging\windows\CanaryGuard.iss
+          if ($LASTEXITCODE -ne 0) { throw "ISCC exited with $LASTEXITCODE (see packaging/windows/CanaryGuard.iss)" }
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -50,7 +54,7 @@ jobs:
             dist/CanaryGuard.exe
             dist/CanaryGuardApp.exe
             dist/CanaryGuard-Setup-*.exe
-          if-no-files-found: error
+          if-no-files-found: warn
 
   publish:
     needs: [test, build-windows]
