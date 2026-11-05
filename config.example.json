@@ -112,7 +112,10 @@
         "keywords": null
     },
     "telegram_bot": {
-        "enabled": true
+        "enabled": true,
+        "owner": "supervisor",
+        "allowed_chats": [],
+        "admin_user_ids": []
     },
     "lan_monitor": {
         "enabled": true,
