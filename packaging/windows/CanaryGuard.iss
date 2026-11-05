@@ -22,7 +22,7 @@ Compression=lzma2
 SolidCompression=yes
 PrivilegesRequired=lowest
 ArchitecturesInstallIn64BitMode=x64
-SetupIconFile=..\..\static\icons\icon-512.png
+SetupIconFile=..\..\static\icons\icon.ico
 UninstallDisplayIcon={app}\{#MyAppDesktopExeName}
 
 [Languages]
