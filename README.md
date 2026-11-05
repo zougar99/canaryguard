@@ -415,9 +415,14 @@ four launcher tasks run `-WindowStyle Hidden`.
 
 ## Get notifications set up (Telegram, Discord, Slack, e-mail)
 
+> **Easier option:** open the web dashboard → **Notifications** tab. All three channels
+> (Telegram, Discord, email) can be configured, saved and tested live — no file editing,
+> no restart. The secrets you paste are masked in the UI and stored only in `config.json`.
+
 You can enable any combination of the four channels — they don't exclude each other.
 Below are the exact steps for each. Note that the **Test alert** button always sends through
-**Telegram only** — Discord/Slack/e-mail are exercised by real alerts.
+**Telegram only** when triggered via `/api/test_alert`; the **Notifications** tab has a per-channel
+**Send test** button.
 
 ### 1) Telegram (recommended)
 
@@ -678,6 +683,7 @@ Two authentication modes:
 - Sidebar with **Overview / Live feed / Events / Control / … / Cleanup / About** sections, keyboard shortcuts (`1`–`9`, `/`, `r`, `t`).
 - **Overview** — KPI cards (events, critical, credentials, monitors, uptime, blocked IPs), activity chart, severity donut, top attacker IPs, **attacker map** (offline country centroids, no external request).
 - **Live feed** — real-time event stream with severity filters and text search.
+- **Notifications** — configure and test Telegram / Discord / email channels live (saved to `config.json`, no restart).
 - **Control** — Sleep / Resume / Restart / Stop, mute categories, firewall blocklist, monitor toggles.
 - **Cleanup** — find and delete suspicious files in one click.
 - **NOC console** (`/console`) — fullscreen wallboard fed by `/api/stream` (server-sent events); designed for an always-on second monitor.

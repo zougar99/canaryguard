@@ -255,6 +255,158 @@ class DashboardServer:
             )
             return jsonify({"ok": True, "sent_via": sent})
 
+        # ---- notification channel settings (Telegram / Discord / email) ----
+
+        _MASK = "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+
+        def _mask(value, keep=4):
+            s = str(value or "")
+            if not s:
+                return ""
+            return _MASK + s[-keep:] if len(s) > keep else _MASK
+
+        def _keep_secret(value, current):
+            """Masked placeholder sent back = keep the stored secret."""
+            if value is None:
+                return current
+            s = str(value).strip()
+            if s == _MASK or s.startswith(_MASK):
+                return current
+            return s
+
+        def _read_raw_config():
+            try:
+                with open(self.config.path, "r", encoding="utf-8") as fh:
+                    return json.load(fh)
+            except Exception:
+                return dict(self.config.data or {})
+
+        def _notify_state():
+            raw = _read_raw_config()
+            alerts = raw.get("alerts") if isinstance(raw.get("alerts"), dict) else {}
+            tg = alerts.get("telegram") or {}
+            dc = alerts.get("discord") or {}
+            em = alerts.get("email") or {}
+            return {
+                "telegram": {
+                    "enabled": bool(tg.get("enabled")),
+                    "chat_id": str(tg.get("chat_id") or ""),
+                    "bot_token": _mask(tg.get("bot_token")),
+                    "configured": bool(tg.get("bot_token") and tg.get("chat_id")),
+                },
+                "discord": {
+                    "enabled": bool(dc.get("enabled")),
+                    "webhook_url": _mask(dc.get("webhook_url"), keep=14),
+                    "configured": bool(str(dc.get("webhook_url") or "").strip()),
+                },
+                "email": {
+                    "enabled": bool(em.get("enabled")),
+                    "smtp_host": str(em.get("smtp_host") or ""),
+                    "smtp_port": int(em.get("smtp_port") or 587),
+                    "username": str(em.get("username") or ""),
+                    "from_addr": str(em.get("from_addr") or ""),
+                    "to_addr": str(em.get("to_addr") or ""),
+                    "password": _MASK if em.get("password") else "",
+                    "configured": bool(em.get("smtp_host") and em.get("from_addr") and em.get("to_addr")),
+                },
+            }
+
+        @app.route("/api/notify")
+        def api_notify_get():
+            return jsonify(_notify_state())
+
+        @app.route("/api/notify", methods=["POST"])
+        def api_notify_save():
+            import re
+
+            body = request.get_json(silent=True) or {}
+            channel = (body.get("channel") or "").lower()
+            if channel not in ("telegram", "discord", "email"):
+                return jsonify({"error": "unknown channel"}), 400
+            raw = _read_raw_config()
+            if not isinstance(raw, dict):
+                return jsonify({"error": "cannot read config.json"}), 500
+            alerts = raw.setdefault("alerts", {})
+            if not isinstance(alerts, dict):
+                return jsonify({"error": "alerts section is not an object"}), 500
+            sec = dict(alerts.get(channel) or {})
+            enabled = bool(body.get("enabled"))
+
+            if channel == "telegram":
+                sec["bot_token"] = _keep_secret(body.get("bot_token"), sec.get("bot_token", ""))
+                sec["chat_id"] = str(body.get("chat_id", sec.get("chat_id", "")) or "").strip()
+                token = sec["bot_token"]
+                if enabled and not re.match(r"^\d{4,}:[A-Za-z0-9_-]{20,}$", token or ""):
+                    return jsonify({"error": "bot_token looks invalid — it must look like 123456789:AAH..."}), 400
+                if enabled and not re.match(r"^-?\d+$", sec["chat_id"] or ""):
+                    return jsonify({"error": "chat_id must be a number (groups/supergroups are negative)"}), 400
+            elif channel == "discord":
+                sec["webhook_url"] = _keep_secret(body.get("webhook_url"), sec.get("webhook_url", ""))
+                url = sec["webhook_url"] or ""
+                if enabled and not (url.startswith("https://discord.com/api/webhooks/")
+                                    or url.startswith("https://discordapp.com/api/webhooks/")):
+                    return jsonify({"error": "webhook URL must start with https://discord.com/api/webhooks/"}), 400
+            elif channel == "email":
+                sec["smtp_host"] = str(body.get("smtp_host", sec.get("smtp_host", "")) or "").strip()
+                try:
+                    port = int(body.get("smtp_port", sec.get("smtp_port", 587)))
+                except (TypeError, ValueError):
+                    return jsonify({"error": "smtp_port must be a number (e.g. 587)"}), 400
+                if not 1 <= port <= 65535:
+                    return jsonify({"error": "smtp_port out of range"}), 400
+                sec["smtp_port"] = port
+                sec["username"] = str(body.get("username", sec.get("username", "")) or "").strip()
+                sec["password"] = _keep_secret(body.get("password"), sec.get("password", ""))
+                sec["from_addr"] = str(body.get("from_addr", sec.get("from_addr", "")) or "").strip()
+                sec["to_addr"] = str(body.get("to_addr", sec.get("to_addr", "")) or "").strip()
+                if enabled:
+                    if not sec["smtp_host"]:
+                        return jsonify({"error": "smtp_host is required"}), 400
+                    if not (sec["from_addr"] and "@" in sec["from_addr"]
+                            and sec["to_addr"] and "@" in sec["to_addr"]):
+                        return jsonify({"error": "from_addr and to_addr must be valid addresses"}), 400
+
+            sec["enabled"] = enabled
+            alerts[channel] = sec
+            try:
+                with open(self.config.path, "w", encoding="utf-8") as fh:
+                    json.dump(raw, fh, indent=4, ensure_ascii=False)
+                self.config.data = raw
+            except Exception as exc:
+                return jsonify({"error": f"cannot write config.json: {exc}"}), 500
+            if self.alerts is not None:
+                setattr(self.alerts, channel, dict(sec))
+            return jsonify({"ok": True, "channel": channel, "state": _notify_state()[channel]})
+
+        @app.route("/api/notify/test", methods=["POST"])
+        def api_notify_test():
+            if not self.alerts:
+                return jsonify({"error": "alerts not available"}), 503
+            body = request.get_json(silent=True) or {}
+            ch = (body.get("channel") or "").lower()
+            if ch not in ("telegram", "discord", "email"):
+                return jsonify({"error": "unknown channel"}), 400
+            cfg = getattr(self.alerts, ch) or {}
+            stamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            subject = "CanaryGuard TEST alert"
+            msg = f"CanaryGuard test notification\nchannel: {ch}\ntime: {stamp}"
+            try:
+                if ch == "telegram":
+                    if not (cfg.get("enabled") and cfg.get("bot_token") and cfg.get("chat_id")):
+                        return jsonify({"error": "Telegram is not enabled/configured yet"}), 400
+                    self.alerts._send_telegram(subject, msg)
+                elif ch == "discord":
+                    if not (cfg.get("enabled") and cfg.get("webhook_url")):
+                        return jsonify({"error": "Discord webhook is not enabled/configured yet"}), 400
+                    self.alerts._send_discord(subject, msg)
+                else:
+                    if not (cfg.get("enabled") and cfg.get("smtp_host") and cfg.get("to_addr")):
+                        return jsonify({"error": "email is not enabled/configured yet"}), 400
+                    self.alerts._send_email(subject, msg)
+            except Exception as exc:
+                return jsonify({"error": f"{ch} delivery failed: {exc}"}), 502
+            return jsonify({"ok": True, "channel": ch, "sent_at": stamp})
+
         @app.route("/logout")
         def logout():
             session.pop("cg_authed", None)
