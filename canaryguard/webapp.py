@@ -14,7 +14,7 @@ AUTH_EXEMPT_PREFIXES = ("/login", "/t/", "/static/")
 
 
 class DashboardServer:
-    def __init__(self, config, logger=None, decoys=None, cleanup=None, sessions=None, keystrokes=None, secrets=None, embeds=None, alerts=None, monitors=None, ipblock=None):
+    def __init__(self, config, logger=None, decoys=None, cleanup=None, sessions=None, keystrokes=None, secrets=None, embeds=None, alerts=None, monitors=None, ipblock=None, runtime=None):
         self.config = config
         self.logger = logger or print
         self.store = get_store(config)
@@ -27,6 +27,7 @@ class DashboardServer:
         self.alerts = alerts
         self.monitors = monitors or {}
         self.ipblock = ipblock
+        self.runtime = runtime
         self.app = Flask(__name__, template_folder=os.path.join(BASE_DIR, "templates"), static_folder=os.path.join(BASE_DIR, "static"))
         self.app.secret_key = config.get("dashboard", "secret_key", default=pysecrets.token_hex(32))
         self._username = config.get("dashboard", "username", default="admin")
@@ -306,6 +307,46 @@ class DashboardServer:
                 return jsonify({"ok": False, "error": str(exc)}), 500
             ok = self._persist_config(f"{name}_monitor", {"enabled": enabled})
             return jsonify({"ok": True, "name": name, "enabled": enabled, "saved": ok})
+
+        @app.route("/api/control/state")
+        def api_control_state():
+            from . import control as ctl
+
+            st = ctl.status()
+            st["monitors_running"] = sum(
+                1 for m in self.monitors.values() if self._mon_status(m) == "running"
+            )
+            st["monitors_total"] = len(self.monitors)
+            if self.runtime is not None:
+                st["mode"] = self.runtime.mode
+            return jsonify(st)
+
+        def _runtime_action(action):
+            if self.runtime is None:
+                return jsonify({"ok": False, "error": "runtime control unavailable"}), 503
+            body = request.get_json(silent=True) or {}
+            reason = (body.get("reason") or f"{action} requested").strip()
+            try:
+                getattr(self.runtime, action)(reason)
+            except Exception as exc:
+                return jsonify({"ok": False, "error": str(exc)}), 500
+            return jsonify({"ok": True, "mode": self.runtime.mode, "action": action})
+
+        @app.route("/api/control/pause", methods=["POST"])
+        def api_control_pause():
+            return _runtime_action("pause")
+
+        @app.route("/api/control/resume", methods=["POST"])
+        def api_control_resume():
+            return _runtime_action("resume")
+
+        @app.route("/api/control/stop", methods=["POST"])
+        def api_control_stop():
+            return _runtime_action("shutdown")
+
+        @app.route("/api/control/restart", methods=["POST"])
+        def api_control_restart():
+            return _runtime_action("restart")
 
         @app.route("/api/lock", methods=["POST"])
         def api_lock():

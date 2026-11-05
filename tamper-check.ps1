@@ -51,8 +51,26 @@ function Mark-Try([string]$file) {
     try { (Get-Date).ToString('o') | Set-Content -Path $file -NoNewline -Encoding ascii } catch {}
 }
 
-# 1. CanaryGuard dashboard/port check
-if (-not (Test-Port '127.0.0.1' 8080)) {
+# 0. Control supervisor (cgctl.py) must always be alive: it is the piece that
+# lets Telegram /start work while the main service is stopped. Never gated by
+# tamper.stopped - the supervisor is what clears that flag.
+$sup = Get-CimInstance Win32_Process |
+    Where-Object { $_.Name -like 'python*.exe' -and $_.CommandLine -like '*cgctl.py*' }
+if (-not $sup) {
+    if (-not (Too-Soon "$dir\tamper.ctl.cooldown" 5)) {
+        Mark-Try "$dir\tamper.ctl.cooldown"
+        Start-ScheduledTask -TaskName 'CanaryGuardControl'
+        Log "control supervisor down -> revived"
+    }
+}
+
+# 1. CanaryGuard dashboard/port check.
+# If the user asked for a full stop (Telegram /stop or the app), a stop flag
+# exists and the watchdog must leave the service down until /start.
+$userStopped = Test-Path "$dir\tamper.stopped"
+if ($userStopped) {
+    # nothing to do: stop is intentional
+} elseif (-not (Test-Port '127.0.0.1' 8080)) {
     if (-not (Too-Soon "$dir\tamper.cg.cooldown" 5)) {
         Mark-Try "$dir\tamper.cg.cooldown"
         Start-ScheduledTask -TaskName 'CanaryGuard'

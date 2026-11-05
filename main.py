@@ -10,6 +10,7 @@ if hasattr(sys.stdout, "reconfigure"):
     except Exception:
         pass
 
+from canaryguard import control as ctl
 from canaryguard.config import Config
 from canaryguard.decoys import DecoyAccessScanner, DecoyManager, DecoyWatcher
 from canaryguard.embedtokens import EmbedAccessScanner, EmbedTokenManager
@@ -71,6 +72,97 @@ def _single_instance_guard():
     except Exception as exc:
         print(f"[main] single-instance guard unavailable: {exc}")
         return None
+
+
+class _RuntimeControl:
+    """Pause / resume / stop / restart, driven by the dashboard or Telegram.
+
+    Pause keeps the process and dashboard alive but stops every monitor.
+    Stop writes the "stopped" flag (so the watchdog leaves it down) and shuts
+    the process down. The always-on supervisor (cgctl.py) can start it again.
+    """
+
+    def __init__(self, monitors, alerts=None, logger=print):
+        self.monitors = monitors or {}
+        self.alerts = alerts
+        self.logger = logger
+        self.mode = "running"
+        self.stop_event = threading.Event()
+
+    def _notify(self, text):
+        try:
+            if self.alerts:
+                self.alerts.send_raw(text)
+        except Exception:
+            pass
+
+    def _each(self, action):
+        ok, failed = 0, []
+        for name, mon in self.monitors.items():
+            if mon is None:
+                continue
+            try:
+                getattr(mon, action)()
+                ok += 1
+            except Exception as exc:
+                failed.append(f"{name}: {exc}")
+        return ok, failed
+
+    def _clear_flags(self):
+        for mon in self.monitors.values():
+            flag = getattr(mon, "_stop", None)
+            if flag is not None:
+                try:
+                    flag.clear()
+                except Exception:
+                    pass
+
+    def pause(self, reason=""):
+        self.mode = "paused"
+        ctl.write_state("paused", reason)
+        ok, failed = self._each("stop")
+        self.logger(f"[control] paused: {ok} monitors stopped, {len(failed)} failed")
+        self._notify(f"\u23f8 <b>CanaryGuard PAUSED</b>\nreason: {reason or '-'}\n"
+                     f"monitors stopped: {ok}\ndashboard stays online")
+        return {"ok": ok, "failed": failed}
+
+    def resume(self, reason=""):
+        self.mode = "running"
+        ctl.write_state("running", reason)
+        self._clear_flags()
+        ok, failed = self._each("start")
+        self.logger(f"[control] resumed: {ok} monitors started, {len(failed)} failed")
+        self._notify(f"\u25b6 <b>CanaryGuard RESUMED</b>\nreason: {reason or '-'}\n"
+                     f"monitors started: {ok}")
+        return {"ok": ok, "failed": failed}
+
+    def shutdown(self, reason=""):
+        self.mode = "stopped"
+        ctl.set_stop_flag(True, reason)
+        ctl.write_state("stopped", reason)
+        self._notify(f"\u23f9 <b>CanaryGuard STOPPED</b>\nreason: {reason or '-'}\n"
+                     f"send /start to bring it back")
+        # give the HTTP response time to leave before the process exits
+        threading.Timer(1.0, self.stop_event.set).start()
+
+    def restart(self, reason=""):
+        import subprocess
+
+        self.mode = "restarting"
+        ctl.set_stop_flag(False, reason)
+        ctl.write_state("restarting", reason)
+        self._notify(f"\U0001f504 <b>CanaryGuard RESTARTING</b>\nreason: {reason or '-'}")
+        flags = 0x00000008 | 0x00000200 if IS_WINDOWS else 0  # DETACHED | NEW_GROUP
+        try:
+            subprocess.Popen(
+                ["cmd.exe", "/c", "ping -n 4 127.0.0.1 >nul & schtasks /run /tn CanaryGuard"],
+                creationflags=flags,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except Exception as exc:
+            self.logger(f"[control] restart spawn failed: {exc}")
+        threading.Timer(1.2, self.stop_event.set).start()
 
 
 def main():
@@ -187,9 +279,16 @@ def main():
     if panic:
         bot.monitors["panic"] = panic.idle
     bot.monitors.update(monitors)
-    if config.get("telegram_bot", "enabled", default=True):
+    # The always-on supervisor (cgctl.py) owns Telegram polling so that
+    # /start still works while this service is stopped. Two pollers on one
+    # bot token would fight over getUpdates (409 Conflict).
+    bot_owner = str(config.get("telegram_bot", "owner", default="supervisor")).lower()
+    if config.get("telegram_bot", "enabled", default=True) and bot_owner != "supervisor":
         bot.start()
+    else:
+        print("[bot] telegram polling owned by supervisor (cgctl.py)")
     secscan = SecretScanner(config, alerts=ing.alerts)
+    fw = None
     if config.get("protect", "folder_monitor", default=True):
         if IS_WINDOWS and config.get("ransomware_monitor", "enabled", default=True):
             try:
@@ -200,15 +299,24 @@ def main():
         fw = FolderWatchdog(config, alerts=ing.alerts, secrets=secscan, ransomware=randsom)
         fw.start()
 
+    runtime_monitors = dict(bot.monitors)
+    if fw is not None:
+        runtime_monitors["protect"] = fw
+    runtime_monitors["decoys_scan"] = scanner
+    runtime = _RuntimeControl(runtime_monitors, alerts=ing.alerts)
+    ctl.set_stop_flag(False, "service started")
+    ctl.write_state("running", "service started")
+
     if config.get("dashboard", "auto_start", default=True):
-        dash = DashboardServer(config, decoys=decoys, cleanup=Cleanup(config), sessions=sesmon, keystrokes=kl, secrets=secscan, embeds=embeds, alerts=ing.alerts, monitors=bot.monitors, ipblock=ipb)
+        dash = DashboardServer(config, decoys=decoys, cleanup=Cleanup(config), sessions=sesmon, keystrokes=kl, secrets=secscan, embeds=embeds, alerts=ing.alerts, monitors=bot.monitors, ipblock=ipb, runtime=runtime)
         dash.run()
 
     print("[canaryguard] running. Ctrl+C to stop.")
     awake_stop = _start_keep_awake()
     try:
-        while True:
-            time.sleep(1)
+        while not runtime.stop_event.wait(1):
+            pass
+        print("[canaryguard] control requested shutdown")
     except KeyboardInterrupt:
         print("\n[canaryguard] stopping...")
         if awake_stop:
@@ -233,6 +341,9 @@ def main():
         if kl:
             kl.stop()
         ing.stop()
+
+    if runtime.mode != "restarting":
+        ctl.write_state("stopped", "process exited")
 
 
 def _start_keep_awake():
