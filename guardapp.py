@@ -24,6 +24,10 @@ except Exception:  # Pillow optional for screenshot preview
     ImageTk = None
 
 BASE_URL = "http://127.0.0.1:8080"
+ROOT_DIR = os.path.dirname(os.path.abspath(__file__))
+ICON_PNG = os.path.join(ROOT_DIR, "assets", "icon.png")
+ICON_ICO = os.path.join(ROOT_DIR, "assets", "icon.ico")
+LOGO_PNG = os.path.join(ROOT_DIR, "assets", "logo.png")
 UI_DIR = os.path.join(os.environ.get("LOCALAPPDATA", os.path.expanduser("~")), "CanaryGuard")
 UI_FILE = os.path.join(UI_DIR, "ui.json")
 
@@ -83,10 +87,41 @@ class GuardApp:
         self.online = tk.BooleanVar(value=False)
         self._refresh_job = None
         self.splash = None
+        self._icon_img = None
+        self._set_icon(self.root)
         self._build_splash()
         self._try_connect()
 
     # ---------- plumbing ----------
+
+    def _set_icon(self, win):
+        """Apply the CanaryGuard icon to the window and all toplevels."""
+        if os.path.exists(ICON_PNG):
+            try:
+                if Image is not None and ImageTk is not None:
+                    self._icon_img = ImageTk.PhotoImage(Image.open(ICON_PNG))
+                else:
+                    self._icon_img = tk.PhotoImage(file=ICON_PNG)
+                win.iconphoto(True, self._icon_img)
+                return
+            except Exception:
+                pass
+        if os.path.exists(ICON_ICO):
+            try:
+                win.iconbitmap(default=ICON_ICO)
+            except Exception:
+                pass
+
+    def _logo_image(self, size):
+        """Small transparent logo for headers, or None when Pillow is absent."""
+        if Image is None or ImageTk is None or not os.path.exists(LOGO_PNG):
+            return None
+        try:
+            img = Image.open(LOGO_PNG).convert("RGBA")
+            img = img.resize((size, size), Image.LANCZOS)
+            return ImageTk.PhotoImage(img)
+        except Exception:
+            return None
 
     def ui(self, fn, *args):
         """Run fn on the Tk thread."""
@@ -139,7 +174,12 @@ class GuardApp:
         win.resizable(False, False)
         frm = tk.Frame(win, padx=20, pady=18)
         frm.pack(fill="both", expand=True)
-        tk.Label(frm, text="🛡️ CanaryGuard Desktop",
+        logo = self._logo_image(52)
+        if logo is not None:
+            lbl = tk.Label(frm, image=logo)
+            lbl.image = logo
+            lbl.pack()
+        tk.Label(frm, text="CanaryGuard Desktop",
                  font=("Segoe UI", 14, "bold")).pack()
         self._splash_lbl = tk.Label(frm, text="connecting to dashboard...", fg="#666")
         self._splash_lbl.pack(pady=(10, 8))
@@ -201,20 +241,25 @@ class GuardApp:
         win.protocol("WM_DELETE_WINDOW", self._quit_all)
         frm = tk.Frame(win, padx=18, pady=16)
         frm.pack()
-        tk.Label(frm, text="🛡️ CanaryGuard Desktop", font=("Segoe UI", 14, "bold")).grid(row=0, column=0, columnspan=2, pady=(0, 10))
-        tk.Label(frm, text="username:").grid(row=1, column=0, sticky="e", pady=3)
+        logo = self._logo_image(44)
+        if logo is not None:
+            lbl = tk.Label(frm, image=logo)
+            lbl.image = logo
+            lbl.grid(row=0, column=0, columnspan=2, pady=(0, 6))
+        tk.Label(frm, text="CanaryGuard Desktop", font=("Segoe UI", 14, "bold")).grid(row=1, column=0, columnspan=2, pady=(0, 10))
+        tk.Label(frm, text="username:").grid(row=2, column=0, sticky="e", pady=3)
         u = tk.Entry(frm, width=26)
-        u.grid(row=1, column=1, pady=3)
-        tk.Label(frm, text="password:").grid(row=2, column=0, sticky="e", pady=3)
+        u.grid(row=2, column=1, pady=3)
+        tk.Label(frm, text="password:").grid(row=3, column=0, sticky="e", pady=3)
         p = tk.Entry(frm, width=26, show="*")
-        p.grid(row=2, column=1, pady=3)
+        p.grid(row=3, column=1, pady=3)
         saved_u, saved_p = load_creds()
         u.insert(0, saved_u or "admin")
         p.insert(0, saved_p)
         self._login_status = tk.Label(frm, text="", fg="#666")
-        self._login_status.grid(row=4, column=0, columnspan=2, pady=(8, 0))
+        self._login_status.grid(row=5, column=0, columnspan=2, pady=(8, 0))
         b = tk.Button(frm, text="Sign in", width=20, command=lambda: self._do_login(u.get(), p.get()))
-        b.grid(row=3, column=0, columnspan=2, pady=(10, 2))
+        b.grid(row=4, column=0, columnspan=2, pady=(10, 2))
 
         def enter(e):
             self._do_login(u.get(), p.get())
@@ -258,8 +303,13 @@ class GuardApp:
         self.root.deiconify()
         bar = tk.Frame(self.root, bg="#12343b", height=46)
         bar.pack(fill="x")
-        tk.Label(bar, text="🛡️ CanaryGuard", bg="#12343b", fg="white",
-                 font=("Segoe UI", 12, "bold")).pack(side="left", padx=12, pady=8)
+        logo = self._logo_image(26)
+        if logo is not None:
+            lbl = tk.Label(bar, image=logo, bg="#12343b")
+            lbl.image = logo
+            lbl.pack(side="left", padx=(12, 6), pady=8)
+        tk.Label(bar, text="CanaryGuard", bg="#12343b", fg="white",
+                 font=("Segoe UI", 12, "bold")).pack(side="left", padx=(0, 12), pady=8)
         self.status_lbl = tk.Label(bar, text=">", bg="#12343b", fg="#bbb")
         self.status_lbl.pack(side="right", padx=12)
 

@@ -1,6 +1,12 @@
-# CanaryGuard
+<p align="center">
+  <img src="assets/logo.png" alt="CanaryGuard logo" width="132">
+</p>
 
-Self-hosted honeypot + host intrusion detection + remote control for Windows and Linux.
+<h1 align="center">CanaryGuard</h1>
+
+<p align="center">
+  <b>Self-hosted honeypot + host intrusion detection + remote control for Windows and Linux.</b>
+</p>
 
 CanaryGuard sits on top of [OpenCanary](https://github.com/thinkst/opencanary) and turns a
 single machine into a monitored decoy host: fake network services attract scanners, local
@@ -9,6 +15,11 @@ reach your phone through Telegram, Discord, Slack, e-mail or a SIEM.
 
 The whole stack can be paused, stopped, restarted or brought back from a Telegram group or
 channel, even when the main service is completely down.
+
+<p align="center">
+  <sub>Logo and app icon live in <a href="assets/">assets/</a> · vector versions:
+  <a href="assets/logo.svg">logo.svg</a> · <a href="assets/icon.svg">icon.svg</a></sub>
+</p>
 
 ---
 
@@ -405,6 +416,8 @@ canaryguard/
 ├── honeytoken_builder.py       # GUI honeytoken creator
 ├── make_decoys.py              # CLI decoy generator
 ├── config.example.json         # configuration template (no secrets)
+├── assets/                     # logo + app icon (PNG / SVG / ICO)
+├── tools/make_logo.py          # regenerates the logo and icon set
 ├── pyproject.toml
 ├── requirements.txt
 ├── canaryguard/
